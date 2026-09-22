@@ -67,4 +67,5 @@ export const catsInfiniteQueryOptions = {
     lastPage.current_page < lastPage.last_page
       ? lastPage.current_page + 1
       : undefined,
+  networkMode: "offlineFirst" as const,
 };

@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import type { Breed, Paginated } from "@/lib/api";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { usePullToRefresh } from "@/lib/hooks/use-pull-to-refresh";
 import {
@@ -71,7 +75,7 @@ export default function CatList({
   const [inputValue, setInputValue] = useState(initialQuery);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const debouncedQuery = useDebouncedValue(inputValue, SEARCH_DEBOUNCE_MS);
-  const isFirstDebouncedQuery = useRef(true);
+  const prevDebouncedQuery = useRef(debouncedQuery);
   const isRefreshingRef = useRef(false);
 
   const cats = data?.pages.flatMap((page) => page.data) ?? [];
@@ -96,9 +100,25 @@ export default function CatList({
     syncUrlParams({ page: 1 });
 
     try {
-      await queryClient.resetQueries({
+      queryClient.setQueryData<InfiniteData<Paginated<Breed>, number>>(
+        catsInfiniteQueryOptions.queryKey,
+        (old) => {
+          if (!old?.pages.length) {
+            return old;
+          }
+
+          return {
+            pages: old.pages.slice(0, 1),
+            pageParams: old.pageParams.slice(0, 1),
+          };
+        },
+      );
+
+      await queryClient.refetchQueries({
         queryKey: catsInfiniteQueryOptions.queryKey,
       });
+    } catch {
+      // Keep cached page-1 data visible when the network refresh fails.
     } finally {
       isRefreshingRef.current = false;
       setIsRefreshing(false);
@@ -122,16 +142,25 @@ export default function CatList({
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
+  // First paint (SSR/hydrate) can have cats but no measured scroll el yet.
+  // Keep rows on screen without faking a viewport that triggers fetchNextPage.
+  const showVirtualFallback =
+    status === "success" &&
+    filteredCats.length > 0 &&
+    virtualItems.length === 0;
   const showPullIndicator = isPulling || isRefreshing;
   const pullIndicatorHeight = isRefreshing
     ? PULL_THRESHOLD_PX
     : pullDistance;
 
   useEffect(() => {
-    if (isFirstDebouncedQuery.current) {
-      isFirstDebouncedQuery.current = false;
+    // Skip mount / Strict-Mode re-invoke when the value did not actually change.
+    // A one-shot "first run" flag flips on the first invoke, so Strict Mode's
+    // second invoke would wipe pendingRestore and ?page=.
+    if (prevDebouncedQuery.current === debouncedQuery) {
       return;
     }
+    prevDebouncedQuery.current = debouncedQuery;
 
     lastSyncedPage.current = 1;
     pendingRestoreIndex.current = null;
@@ -183,12 +212,16 @@ export default function CatList({
     const pending = pendingRestoreIndex.current;
 
     // Wait for enough filtered rows before restoring when more pages exist.
-    if (pending > filteredCats.length - 1 && hasNextPage) {
+    // Never clamp-and-clear early — that wipes ?page=N down to page 1 in the URL.
+    if (pending > filteredCats.length - 1) {
+      if (hasNextPage) {
+        return;
+      }
+      pendingRestoreIndex.current = null;
       return;
     }
 
-    const targetIndex = Math.min(pending, Math.max(filteredCats.length - 1, 0));
-    const offset = targetIndex * ROW_HEIGHT;
+    const offset = pending * ROW_HEIGHT;
     const maxScroll = el.scrollHeight - el.clientHeight;
 
     if (maxScroll < offset) {
@@ -200,6 +233,13 @@ export default function CatList({
   }, [filteredCats.length, paddingEnd, status, hasNextPage]);
 
   useEffect(() => {
+    const el = parentRef.current;
+    // Wait until the scroll element is measured so we don't page-fetch from a
+    // pre-layout virtual range (that raced URL ?page= restore).
+    if (!el || el.clientHeight === 0) {
+      return;
+    }
+
     const lastItem = virtualItems.at(-1);
 
     if (!lastItem) {
@@ -253,7 +293,7 @@ export default function CatList({
     return <p>Loading...</p>;
   }
 
-  if (status === "error" && !isRefreshing) {
+  if (status === "error" && !data && !isRefreshing) {
     return <p>Error: {error.message}</p>;
   }
 
@@ -298,40 +338,62 @@ export default function CatList({
         <div ref={parentRef} className="h-full min-h-0 overflow-auto">
           <div
             className="relative w-full"
-            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+            style={{
+              height: showVirtualFallback
+                ? `${(filteredCats.length + 1) * ROW_HEIGHT}px`
+                : `${rowVirtualizer.getTotalSize()}px`,
+            }}
           >
-            {virtualItems.map((virtualRow) => {
-              const isLoaderRow = virtualRow.index > filteredCats.length - 1;
-              const cat = filteredCats[virtualRow.index];
-
-              return (
-                <div
-                  key={virtualRow.key}
-                  data-index={virtualRow.index}
-                  className="absolute left-0 top-0 flex w-full items-center"
-                  style={{
-                    height: `${ROW_HEIGHT}px`,
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                >
-                  {isLoaderRow ? (
-                    isFetchNextPageError ? (
-                      <p>Error loading more cats.</p>
-                    ) : hasNextPage ? (
-                      <p>Loading more...</p>
-                    ) : (
-                      <p>Nothing more to load.</p>
-                    )
-                  ) : cat ? (
+            {showVirtualFallback
+              ? filteredCats.map((cat, index) => (
+                  <div
+                    key={`fallback-${cat.breed}-${index}`}
+                    data-index={index}
+                    className="absolute left-0 top-0 flex w-full items-center"
+                    style={{
+                      height: `${ROW_HEIGHT}px`,
+                      transform: `translateY(${index * ROW_HEIGHT}px)`,
+                    }}
+                  >
                     <p className="truncate">
                       <strong>{cat.breed}</strong>
                       {" — "}
                       {cat.country}
                     </p>
-                  ) : null}
-                </div>
-              );
-            })}
+                  </div>
+                ))
+              : virtualItems.map((virtualRow) => {
+                  const isLoaderRow = virtualRow.index > filteredCats.length - 1;
+                  const cat = filteredCats[virtualRow.index];
+
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      className="absolute left-0 top-0 flex w-full items-center"
+                      style={{
+                        height: `${ROW_HEIGHT}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      {isLoaderRow ? (
+                        isFetchNextPageError ? (
+                          <p>Error loading more cats.</p>
+                        ) : hasNextPage ? (
+                          <p>Loading more...</p>
+                        ) : (
+                          <p>Nothing more to load.</p>
+                        )
+                      ) : cat ? (
+                        <p className="truncate">
+                          <strong>{cat.breed}</strong>
+                          {" — "}
+                          {cat.country}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
           </div>
         </div>
       </div>

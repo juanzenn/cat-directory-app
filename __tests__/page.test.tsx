@@ -274,3 +274,72 @@ test("CatList Refresh button refetches from page 1 and clears page param", async
   expect(screen.getByText("Abyssinian")).toBeDefined();
   expect(screen.queryByText("Aegean")).toBeNull();
 });
+
+test("CatList refresh keeps cats visible while refetch is in-flight", async () => {
+  mockGetCats.mockResolvedValueOnce(page1);
+
+  renderWithProviders(<CatList />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Abyssinian")).toBeDefined();
+  });
+
+  let resolveRefresh!: (value: Paginated<Breed>) => void;
+  mockGetCats.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+  );
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Refresh", hidden: true }),
+  );
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("button", { name: "Refreshing…", hidden: true }),
+    ).toBeDefined();
+  });
+
+  expect(screen.getByText("Abyssinian")).toBeDefined();
+  expect(screen.getByText("Aegean")).toBeDefined();
+  expect(screen.queryByText("Loading...")).toBeNull();
+
+  await act(async () => {
+    resolveRefresh(page1);
+  });
+
+  await waitFor(() => {
+    expect(screen.getByText("Abyssinian")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Refresh", hidden: true }),
+    ).toBeDefined();
+  });
+});
+
+test("CatList refresh keeps cached cats when refetch fails", async () => {
+  mockGetCats.mockResolvedValueOnce(page1);
+
+  renderWithProviders(<CatList />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Abyssinian")).toBeDefined();
+  });
+
+  mockGetCats.mockRejectedValueOnce(new Error("offline"));
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Refresh", hidden: true }),
+  );
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("button", { name: "Refresh", hidden: true }),
+    ).toBeDefined();
+  });
+
+  expect(screen.getByText("Abyssinian")).toBeDefined();
+  expect(screen.getByText("Aegean")).toBeDefined();
+  expect(screen.queryByText("Error: offline")).toBeNull();
+});

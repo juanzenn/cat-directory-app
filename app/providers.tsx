@@ -1,14 +1,20 @@
 "use client";
 
-import { QueryClientProvider } from "@tanstack/react-query";
+import { useState } from "react";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { getQueryClient } from "@/lib/query/get-query-client";
+import { getCatsPersistOptions } from "@/lib/query/persist";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
+  const [persistOptions] = useState(() => getCatsPersistOptions());
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={persistOptions}
+    >
       <div className="flex h-full min-h-0 flex-1 flex-col">{children}</div>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }
