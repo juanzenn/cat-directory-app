@@ -7,6 +7,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <div className="flex h-full min-h-0 flex-1 flex-col">{children}</div>
+    </QueryClientProvider>
   );
 }

@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Page from "../app/page";
 import CatList from "../components/cat-list";
 import { getCats } from "@/lib/api";
+import type { Breed, Paginated } from "@/lib/api";
+import { getQueryClient } from "@/lib/query/get-query-client";
 
 vi.mock("@/lib/api", () => ({
   getCats: vi.fn(),
@@ -19,30 +21,38 @@ class MockResizeObserver {
 
 vi.stubGlobal("ResizeObserver", MockResizeObserver);
 
-const page1 = {
-  current_page: 1,
-  data: [
-    {
-      breed: "Abyssinian",
-      country: "Ethiopia",
-      origin: "Natural/Standard",
-      coat: "Short",
-      pattern: "Ticked",
-    },
-    {
-      breed: "Aegean",
-      country: "Greece",
-      origin: "Natural/Standard",
-      coat: "Semi-long",
-      pattern: "Multi",
-    },
-  ],
-  per_page: 10,
-  total: 2,
-  last_page: 1,
-  next_page_url: null,
-  prev_page_url: null,
-};
+function makePage(
+  currentPage: number,
+  lastPage: number,
+  breeds: Breed[],
+): Paginated<Breed> {
+  return {
+    current_page: currentPage,
+    data: breeds,
+    per_page: 10,
+    total: breeds.length,
+    last_page: lastPage,
+    next_page_url: currentPage < lastPage ? `?page=${currentPage + 1}` : null,
+    prev_page_url: currentPage > 1 ? `?page=${currentPage - 1}` : null,
+  };
+}
+
+const page1 = makePage(1, 1, [
+  {
+    breed: "Abyssinian",
+    country: "Ethiopia",
+    origin: "Natural/Standard",
+    coat: "Short",
+    pattern: "Ticked",
+  },
+  {
+    breed: "Aegean",
+    country: "Greece",
+    origin: "Natural/Standard",
+    coat: "Semi-long",
+    pattern: "Multi",
+  },
+]);
 
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
@@ -58,6 +68,7 @@ function renderWithProviders(ui: React.ReactElement) {
 
 beforeEach(() => {
   mockGetCats.mockReset();
+  getQueryClient().clear();
 
   Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
     configurable: true,
@@ -92,7 +103,9 @@ afterEach(() => {
 test("Page shows SSR-prefetched cats", async () => {
   mockGetCats.mockResolvedValue(page1);
 
-  renderWithProviders(await Page());
+  renderWithProviders(
+    await Page({ searchParams: Promise.resolve({}) }),
+  );
 
   expect(
     screen.getByRole("heading", { level: 1, name: "Cat Directory" }),
@@ -101,6 +114,34 @@ test("Page shows SSR-prefetched cats", async () => {
   await waitFor(() => {
     expect(screen.getByText("Abyssinian")).toBeDefined();
     expect(screen.getByText("Aegean")).toBeDefined();
+  });
+});
+
+test("Page prefetches pages 1 through N for ?page=N", async () => {
+  mockGetCats.mockImplementation(async (params) => {
+    const page = params?.page ?? 1;
+    return makePage(page, 3, [
+      {
+        breed: `Breed ${page}`,
+        country: "Testland",
+        origin: "Natural/Standard",
+        coat: "Short",
+        pattern: "Solid",
+      },
+    ]);
+  });
+
+  const jsx = await Page({ searchParams: Promise.resolve({ page: "3" }) });
+
+  expect(mockGetCats).toHaveBeenCalledTimes(3);
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 10 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 2, limit: 10 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 3, limit: 10 });
+
+  renderWithProviders(jsx);
+
+  await waitFor(() => {
+    expect(screen.getByText("Breed 1")).toBeDefined();
   });
 });
 

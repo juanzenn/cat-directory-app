@@ -1,10 +1,46 @@
 import { getCats } from "@/lib/api";
 import type { Breed, Paginated } from "@/lib/api";
 
+export const CATS_PAGE_SIZE = 10;
+
+export function parseCatsPageParam(
+  value: string | string[] | undefined,
+): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const page = Number.parseInt(raw ?? "", 10);
+
+  if (!Number.isFinite(page) || page < 1) {
+    return 1;
+  }
+
+  return page;
+}
+
+export function catsIndexFromPage(page: number) {
+  return (page - 1) * CATS_PAGE_SIZE;
+}
+
+export function catsPageFromScrollTop(
+  scrollTop: number,
+  itemCount: number,
+  rowHeight: number,
+) {
+  if (itemCount <= 0) {
+    return 1;
+  }
+
+  const visibleStartIndex = Math.min(
+    Math.floor(scrollTop / rowHeight),
+    itemCount - 1,
+  );
+
+  return Math.floor(visibleStartIndex / CATS_PAGE_SIZE) + 1;
+}
+
 export const catsInfiniteQueryOptions = {
   queryKey: ["cats"] as const,
   queryFn: ({ pageParam }: { pageParam: number }) =>
-    getCats({ page: pageParam, limit: 10 }),
+    getCats({ page: pageParam, limit: CATS_PAGE_SIZE }),
   initialPageParam: 1,
   getNextPageParam: (lastPage: Paginated<Breed>) =>
     lastPage.current_page < lastPage.last_page
