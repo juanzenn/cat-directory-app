@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
 
 export default function CatList() {
@@ -9,31 +10,44 @@ export default function CatList() {
     error,
     fetchNextPage,
     hasNextPage,
-    isFetching,
     isFetchingNextPage,
     isFetchNextPageError,
     status,
   } = useCatsInfiniteQuery();
 
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const parentRef = useRef<HTMLDivElement | null>(null);
+
+  const cats = data?.pages.flatMap((page) => page.data) ?? [];
+
+  const rowVirtualizer = useVirtualizer({
+    count: cats.length + 1,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 44,
+    overscan: 5,
+    useFlushSync: false,
+  });
 
   useEffect(() => {
-    const node = sentinelRef.current;
-    if (!node) return;
+    const [lastItem] = [...rowVirtualizer.getVirtualItems()].reverse();
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-        if (entry?.isIntersecting && hasNextPage && !isFetching) {
-          void fetchNextPage();
-        }
-      },
-      { rootMargin: "200px" },
-    );
+    if (!lastItem) {
+      return;
+    }
 
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetching]);
+    if (
+      lastItem.index >= cats.length - 1 &&
+      hasNextPage &&
+      !isFetchingNextPage
+    ) {
+      void fetchNextPage();
+    }
+  }, [
+    hasNextPage,
+    fetchNextPage,
+    cats.length,
+    isFetchingNextPage,
+    rowVirtualizer.getVirtualItems(),
+  ]);
 
   if (status === "pending") {
     return <p>Loading...</p>;
@@ -43,25 +57,46 @@ export default function CatList() {
     return <p>Error: {error.message}</p>;
   }
 
-  const cats = data.pages.flatMap((page) => page.data);
-
   return (
-    <>
-      <ul>
-        {cats.map((cat) => (
-          <li key={cat.breed}>
-            <strong>{cat.breed}</strong>
-            {" — "}
-            {cat.country}
-          </li>
-        ))}
-      </ul>
-      <div ref={sentinelRef} aria-hidden="true" />
-      {isFetchingNextPage ? <p>Loading more...</p> : null}
-      {isFetchNextPageError ? <p>Error loading more cats.</p> : null}
-      {!hasNextPage && !isFetchingNextPage ? (
-        <p>Nothing more to load.</p>
-      ) : null}
-    </>
+    <div ref={parentRef} className="h-full min-h-0 flex-1 overflow-auto">
+      <div
+        className="relative w-full"
+        style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+      >
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const isLoaderRow = virtualRow.index > cats.length - 1;
+          const cat = cats[virtualRow.index];
+
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={rowVirtualizer.measureElement}
+              className="absolute left-0 top-0 w-full"
+              style={{
+                height: `${virtualRow.size}px`,
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              {isLoaderRow ? (
+                isFetchNextPageError ? (
+                  <p>Error loading more cats.</p>
+                ) : hasNextPage ? (
+                  <p>Loading more...</p>
+                ) : (
+                  <p>Nothing more to load.</p>
+                )
+              ) : cat ? (
+                <p>
+                  <strong>{cat.breed}</strong>
+                  {" — "}
+                  {cat.country}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

@@ -8,13 +8,15 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const queryClient = getQueryClient();
 
-  await queryClient.prefetchInfiniteQuery(catsInfiniteQueryOptions);
+  await queryClient.infiniteQuery(catsInfiniteQueryOptions);
 
   return (
-    <main className="flex flex-1 flex-col p-8">
+    <main className="flex min-h-0 flex-1 flex-col p-8">
       <h1 className="text-3xl font-semibold tracking-tight">Cat Directory</h1>
       <HydrationBoundary state={dehydrate(queryClient)}>
-        <CatList />
+        <div className="min-h-0 flex-1">
+          <CatList />
+        </div>
       </HydrationBoundary>
     </main>
   );

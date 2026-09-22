@@ -11,13 +11,13 @@ vi.mock("@/lib/api", () => ({
 
 const mockGetCats = vi.mocked(getCats);
 
-class MockIntersectionObserver {
+class MockResizeObserver {
   observe = vi.fn();
   unobserve = vi.fn();
   disconnect = vi.fn();
 }
 
-vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+vi.stubGlobal("ResizeObserver", MockResizeObserver);
 
 const page1 = {
   current_page: 1,
@@ -58,10 +58,35 @@ function renderWithProviders(ui: React.ReactElement) {
 
 beforeEach(() => {
   mockGetCats.mockReset();
+
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+    configurable: true,
+    get() {
+      return 600;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+    configurable: true,
+    get() {
+      return 800;
+    },
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+    width: 800,
+    height: 600,
+    top: 0,
+    left: 0,
+    bottom: 600,
+    right: 800,
+    x: 0,
+    y: 0,
+    toJSON: () => {},
+  });
 });
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 test("Page shows SSR-prefetched cats", async () => {
