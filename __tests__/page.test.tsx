@@ -1,5 +1,11 @@
 import { expect, test, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  fireEvent,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Page from "../app/page";
 import CatList from "../components/cat-list";
@@ -172,4 +178,58 @@ test("CatList shows success status with cats", async () => {
     expect(screen.getByText("Abyssinian")).toBeDefined();
     expect(screen.getByText("Aegean")).toBeDefined();
   });
+});
+
+test("Page with ?q does not pass search to getCats", async () => {
+  mockGetCats.mockResolvedValue(page1);
+
+  const jsx = await Page({
+    searchParams: Promise.resolve({ q: "Abys", page: "1" }),
+  });
+
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 10 });
+  for (const call of mockGetCats.mock.calls) {
+    expect(call[0]).not.toHaveProperty("q");
+    expect(call[0]).not.toHaveProperty("search");
+  }
+
+  renderWithProviders(jsx);
+
+  await waitFor(() => {
+    expect(screen.getByDisplayValue("Abys")).toBeDefined();
+    expect(screen.getByText("Abyssinian")).toBeDefined();
+    expect(screen.queryByText("Aegean")).toBeNull();
+  });
+});
+
+test("CatList filters locally and syncs q to the URL", async () => {
+  mockGetCats.mockResolvedValue(page1);
+  window.history.replaceState({}, "", "/");
+
+  renderWithProviders(<CatList />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Abyssinian")).toBeDefined();
+    expect(screen.getByText("Aegean")).toBeDefined();
+  });
+
+  const input = screen.getByRole("searchbox");
+  fireEvent.change(input, { target: { value: "greece" } });
+
+  expect(screen.queryByText("Abyssinian")).toBeNull();
+  expect(screen.getByText("Aegean")).toBeDefined();
+  expect(new URL(window.location.href).searchParams.get("q")).toBe("greece");
+});
+
+test("CatList with initialQuery shows only matching cats", async () => {
+  mockGetCats.mockResolvedValue(page1);
+
+  renderWithProviders(<CatList initialQuery="Aby" />);
+
+  await waitFor(() => {
+    expect(screen.getByDisplayValue("Aby")).toBeDefined();
+    expect(screen.getByText("Abyssinian")).toBeDefined();
+  });
+
+  expect(screen.queryByText("Aegean")).toBeNull();
 });

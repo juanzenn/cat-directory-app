@@ -3,6 +3,7 @@ import CatList from "@/components/cat-list";
 import {
   catsInfiniteQueryOptions,
   parseCatsPageParam,
+  parseCatsSearchParam,
 } from "@/lib/queries/cats";
 import { getQueryClient } from "@/lib/query/get-query-client";
 
@@ -11,10 +12,12 @@ export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string | string[] }>;
+  searchParams: Promise<{ page?: string | string[]; q?: string | string[] }>;
 }) {
   const queryClient = getQueryClient();
-  const page = parseCatsPageParam((await searchParams).page);
+  const params = await searchParams;
+  const page = parseCatsPageParam(params.page);
+  const query = parseCatsSearchParam(params.q);
 
   await queryClient.infiniteQuery({
     ...catsInfiniteQueryOptions,
@@ -28,7 +31,7 @@ export default async function Home({
       </h1>
       <HydrationBoundary state={dehydrate(queryClient)}>
         <div className="min-h-0 flex-1 overflow-hidden">
-          <CatList initialPage={page} />
+          <CatList initialPage={page} initialQuery={query} />
         </div>
       </HydrationBoundary>
     </main>

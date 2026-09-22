@@ -16,6 +16,27 @@ export function parseCatsPageParam(
   return page;
 }
 
+export function parseCatsSearchParam(
+  value: string | string[] | undefined,
+): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return (raw ?? "").trim();
+}
+
+export function filterCats(cats: Breed[], q: string): Breed[] {
+  const needle = q.trim().toLowerCase();
+
+  if (!needle) {
+    return cats;
+  }
+
+  return cats.filter(
+    (cat) =>
+      cat.breed.toLowerCase().includes(needle) ||
+      cat.country.toLowerCase().includes(needle),
+  );
+}
+
 export function catsIndexFromPage(page: number) {
   return (page - 1) * CATS_PAGE_SIZE;
 }

@@ -5,18 +5,29 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   catsIndexFromPage,
   catsPageFromScrollTop,
+  filterCats,
 } from "@/lib/queries/cats";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
 
 const ROW_HEIGHT = 44;
 
-function syncPageToUrl(page: number) {
+function syncUrlParams({ page, q }: { page?: number; q?: string }) {
   const url = new URL(window.location.href);
 
-  if (page <= 1) {
-    url.searchParams.delete("page");
-  } else {
-    url.searchParams.set("page", String(page));
+  if (page !== undefined) {
+    if (page <= 1) {
+      url.searchParams.delete("page");
+    } else {
+      url.searchParams.set("page", String(page));
+    }
+  }
+
+  if (q !== undefined) {
+    if (!q) {
+      url.searchParams.delete("q");
+    } else {
+      url.searchParams.set("q", q);
+    }
   }
 
   const next = `${url.pathname}${url.search}${url.hash}`;
@@ -27,7 +38,13 @@ function syncPageToUrl(page: number) {
   }
 }
 
-export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
+export default function CatList({
+  initialPage = 1,
+  initialQuery = "",
+}: {
+  initialPage?: number;
+  initialQuery?: string;
+}) {
   const {
     data,
     error,
@@ -44,11 +61,13 @@ export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
     initialPage > 1 ? catsIndexFromPage(initialPage) : null,
   );
   const [paddingEnd, setPaddingEnd] = useState(0);
+  const [query, setQuery] = useState(initialQuery);
 
   const cats = data?.pages.flatMap((page) => page.data) ?? [];
+  const filteredCats = filterCats(cats, query);
 
   const rowVirtualizer = useVirtualizer({
-    count: cats.length + 1,
+    count: filteredCats.length + 1,
     getScrollElement: () => parentRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 5,
@@ -57,6 +76,19 @@ export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
+
+  function handleSearchChange(value: string) {
+    setQuery(value);
+    lastSyncedPage.current = 1;
+    pendingRestoreIndex.current = null;
+
+    const el = parentRef.current;
+    if (el) {
+      el.scrollTop = 0;
+    }
+
+    syncUrlParams({ page: 1, q: value.trim() });
+  }
 
   useEffect(() => {
     if (status !== "success") {
@@ -85,7 +117,7 @@ export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
       return;
     }
 
-    if (paddingEnd === 0 || cats.length === 0) {
+    if (paddingEnd === 0 || filteredCats.length === 0) {
       return;
     }
 
@@ -94,10 +126,14 @@ export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
       return;
     }
 
-    const targetIndex = Math.min(
-      pendingRestoreIndex.current,
-      cats.length - 1,
-    );
+    const pending = pendingRestoreIndex.current;
+
+    // Wait for enough filtered rows before restoring when more pages exist.
+    if (pending > filteredCats.length - 1 && hasNextPage) {
+      return;
+    }
+
+    const targetIndex = Math.min(pending, Math.max(filteredCats.length - 1, 0));
     const offset = targetIndex * ROW_HEIGHT;
     const maxScroll = el.scrollHeight - el.clientHeight;
 
@@ -107,7 +143,7 @@ export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
 
     el.scrollTop = offset;
     pendingRestoreIndex.current = null;
-  }, [cats.length, paddingEnd, status]);
+  }, [filteredCats.length, paddingEnd, status, hasNextPage]);
 
   useEffect(() => {
     const lastItem = virtualItems.at(-1);
@@ -117,7 +153,7 @@ export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
     }
 
     if (
-      lastItem.index >= cats.length - 1 &&
+      lastItem.index >= filteredCats.length - 1 &&
       hasNextPage &&
       !isFetchingNextPage
     ) {
@@ -126,13 +162,13 @@ export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
   }, [
     hasNextPage,
     fetchNextPage,
-    cats.length,
+    filteredCats.length,
     isFetchingNextPage,
     virtualItems,
   ]);
 
   useEffect(() => {
-    if (status !== "success" || cats.length === 0) {
+    if (status !== "success" || filteredCats.length === 0) {
       return;
     }
 
@@ -145,15 +181,19 @@ export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
       return;
     }
 
-    const page = catsPageFromScrollTop(el.scrollTop, cats.length, ROW_HEIGHT);
+    const page = catsPageFromScrollTop(
+      el.scrollTop,
+      filteredCats.length,
+      ROW_HEIGHT,
+    );
 
     if (lastSyncedPage.current === page) {
       return;
     }
 
     lastSyncedPage.current = page;
-    syncPageToUrl(page);
-  }, [cats.length, status, virtualItems]);
+    syncUrlParams({ page });
+  }, [filteredCats.length, status, virtualItems]);
 
   if (status === "pending") {
     return <p>Loading...</p>;
@@ -164,43 +204,55 @@ export default function CatList({ initialPage = 1 }: { initialPage?: number }) {
   }
 
   return (
-    <div ref={parentRef} className="h-full min-h-0 flex-1 overflow-auto">
-      <div
-        className="relative w-full"
-        style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-      >
-        {virtualItems.map((virtualRow) => {
-          const isLoaderRow = virtualRow.index > cats.length - 1;
-          const cat = cats[virtualRow.index];
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+      <label className="flex shrink-0 flex-col gap-1 text-sm">
+        <span className="font-medium">Search</span>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => handleSearchChange(event.target.value)}
+          placeholder="Filter by breed or country"
+          className="rounded border border-neutral-300 bg-transparent px-3 py-2"
+        />
+      </label>
+      <div ref={parentRef} className="min-h-0 flex-1 overflow-auto">
+        <div
+          className="relative w-full"
+          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+        >
+          {virtualItems.map((virtualRow) => {
+            const isLoaderRow = virtualRow.index > filteredCats.length - 1;
+            const cat = filteredCats[virtualRow.index];
 
-          return (
-            <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              className="absolute left-0 top-0 flex w-full items-center"
-              style={{
-                height: `${ROW_HEIGHT}px`,
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-            >
-              {isLoaderRow ? (
-                isFetchNextPageError ? (
-                  <p>Error loading more cats.</p>
-                ) : hasNextPage ? (
-                  <p>Loading more...</p>
-                ) : (
-                  <p>Nothing more to load.</p>
-                )
-              ) : cat ? (
-                <p className="truncate">
-                  <strong>{cat.breed}</strong>
-                  {" — "}
-                  {cat.country}
-                </p>
-              ) : null}
-            </div>
-          );
-        })}
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                className="absolute left-0 top-0 flex w-full items-center"
+                style={{
+                  height: `${ROW_HEIGHT}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                {isLoaderRow ? (
+                  isFetchNextPageError ? (
+                    <p>Error loading more cats.</p>
+                  ) : hasNextPage ? (
+                    <p>Loading more...</p>
+                  ) : (
+                    <p>Nothing more to load.</p>
+                  )
+                ) : cat ? (
+                  <p className="truncate">
+                    <strong>{cat.breed}</strong>
+                    {" — "}
+                    {cat.country}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
