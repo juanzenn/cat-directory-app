@@ -1,22 +1,21 @@
-import { getCats } from "@/lib/api";
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import CatList from "@/components/cat-list";
+import { catsInfiniteQueryOptions } from "@/lib/queries/cats";
+import { getQueryClient } from "@/lib/query/get-query-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const { data: cats } = await getCats();
+  const queryClient = getQueryClient();
+
+  await queryClient.prefetchInfiniteQuery(catsInfiniteQueryOptions);
 
   return (
     <main className="flex flex-1 flex-col p-8">
       <h1 className="text-3xl font-semibold tracking-tight">Cat Directory</h1>
-      <ul>
-        {cats.map((cat) => (
-          <li key={cat.breed}>
-            <strong>{cat.breed}</strong>
-            {" — "}
-            {cat.country}
-          </li>
-        ))}
-      </ul>
+      <HydrationBoundary state={dehydrate(queryClient)}>
+        <CatList />
+      </HydrationBoundary>
     </main>
   );
 }
