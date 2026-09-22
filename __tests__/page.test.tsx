@@ -5,6 +5,7 @@ import {
   waitFor,
   cleanup,
   fireEvent,
+  act,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Page from "../app/page";
@@ -213,12 +214,25 @@ test("CatList filters locally and syncs q to the URL", async () => {
     expect(screen.getByText("Aegean")).toBeDefined();
   });
 
+  vi.useFakeTimers();
+
   const input = screen.getByRole("searchbox");
   fireEvent.change(input, { target: { value: "greece" } });
+
+  expect(screen.getByDisplayValue("greece")).toBeDefined();
+  expect(screen.getByText("Abyssinian")).toBeDefined();
+  expect(screen.getByText("Aegean")).toBeDefined();
+  expect(new URL(window.location.href).searchParams.get("q")).toBeNull();
+
+  await act(async () => {
+    vi.advanceTimersByTime(300);
+  });
 
   expect(screen.queryByText("Abyssinian")).toBeNull();
   expect(screen.getByText("Aegean")).toBeDefined();
   expect(new URL(window.location.href).searchParams.get("q")).toBe("greece");
+
+  vi.useRealTimers();
 });
 
 test("CatList with initialQuery shows only matching cats", async () => {

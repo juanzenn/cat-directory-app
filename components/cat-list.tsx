@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import {
   catsIndexFromPage,
   catsPageFromScrollTop,
@@ -10,6 +11,7 @@ import {
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
 
 const ROW_HEIGHT = 44;
+const SEARCH_DEBOUNCE_MS = 300;
 
 function syncUrlParams({ page, q }: { page?: number; q?: string }) {
   const url = new URL(window.location.href);
@@ -61,10 +63,12 @@ export default function CatList({
     initialPage > 1 ? catsIndexFromPage(initialPage) : null,
   );
   const [paddingEnd, setPaddingEnd] = useState(0);
-  const [query, setQuery] = useState(initialQuery);
+  const [inputValue, setInputValue] = useState(initialQuery);
+  const debouncedQuery = useDebouncedValue(inputValue, SEARCH_DEBOUNCE_MS);
+  const isFirstDebouncedQuery = useRef(true);
 
   const cats = data?.pages.flatMap((page) => page.data) ?? [];
-  const filteredCats = filterCats(cats, query);
+  const filteredCats = filterCats(cats, debouncedQuery);
 
   const rowVirtualizer = useVirtualizer({
     count: filteredCats.length + 1,
@@ -77,8 +81,12 @@ export default function CatList({
 
   const virtualItems = rowVirtualizer.getVirtualItems();
 
-  function handleSearchChange(value: string) {
-    setQuery(value);
+  useEffect(() => {
+    if (isFirstDebouncedQuery.current) {
+      isFirstDebouncedQuery.current = false;
+      return;
+    }
+
     lastSyncedPage.current = 1;
     pendingRestoreIndex.current = null;
 
@@ -87,8 +95,8 @@ export default function CatList({
       el.scrollTop = 0;
     }
 
-    syncUrlParams({ page: 1, q: value.trim() });
-  }
+    syncUrlParams({ page: 1, q: debouncedQuery.trim() });
+  }, [debouncedQuery]);
 
   useEffect(() => {
     if (status !== "success") {
@@ -209,8 +217,8 @@ export default function CatList({
         <span className="font-medium">Search</span>
         <input
           type="search"
-          value={query}
-          onChange={(event) => handleSearchChange(event.target.value)}
+          value={inputValue}
+          onChange={(event) => setInputValue(event.target.value)}
           placeholder="Filter by breed or country"
           className="rounded border border-neutral-300 bg-transparent px-3 py-2"
         />
