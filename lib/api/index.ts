@@ -1,2 +1,3 @@
 export { catFactApi } from "./client";
-export type { Breed, CatFact } from "./types";
+export { getCatFact, getCats } from "./cats";
+export type { Breed, CatFact, GetCatsParams, Paginated } from "./types";
