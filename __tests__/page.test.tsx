@@ -247,3 +247,30 @@ test("CatList with initialQuery shows only matching cats", async () => {
 
   expect(screen.queryByText("Aegean")).toBeNull();
 });
+
+test("CatList Refresh button refetches from page 1 and clears page param", async () => {
+  mockGetCats.mockResolvedValue(page1);
+  window.history.replaceState({}, "", "/?page=2&q=Aby");
+
+  renderWithProviders(<CatList initialQuery="Aby" />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Abyssinian")).toBeDefined();
+  });
+
+  const callsBefore = mockGetCats.mock.calls.length;
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Refresh", hidden: true }),
+  );
+
+  await waitFor(() => {
+    expect(mockGetCats.mock.calls.length).toBeGreaterThan(callsBefore);
+    expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 10 });
+    expect(new URL(window.location.href).searchParams.get("page")).toBeNull();
+    expect(new URL(window.location.href).searchParams.get("q")).toBe("Aby");
+  });
+
+  expect(screen.getByText("Abyssinian")).toBeDefined();
+  expect(screen.queryByText("Aegean")).toBeNull();
+});

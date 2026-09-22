@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { usePullToRefresh } from "@/lib/hooks/use-pull-to-refresh";
 import {
   catsIndexFromPage,
+  catsInfiniteQueryOptions,
   catsPageFromScrollTop,
   filterCats,
 } from "@/lib/queries/cats";
@@ -12,6 +15,7 @@ import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
 
 const ROW_HEIGHT = 44;
 const SEARCH_DEBOUNCE_MS = 300;
+const PULL_THRESHOLD_PX = 72;
 
 function syncUrlParams({ page, q }: { page?: number; q?: string }) {
   const url = new URL(window.location.href);
@@ -57,6 +61,7 @@ export default function CatList({
     status,
   } = useCatsInfiniteQuery();
 
+  const queryClient = useQueryClient();
   const parentRef = useRef<HTMLDivElement | null>(null);
   const lastSyncedPage = useRef<number | null>(initialPage);
   const pendingRestoreIndex = useRef<number | null>(
@@ -64,11 +69,48 @@ export default function CatList({
   );
   const [paddingEnd, setPaddingEnd] = useState(0);
   const [inputValue, setInputValue] = useState(initialQuery);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const debouncedQuery = useDebouncedValue(inputValue, SEARCH_DEBOUNCE_MS);
   const isFirstDebouncedQuery = useRef(true);
+  const isRefreshingRef = useRef(false);
 
   const cats = data?.pages.flatMap((page) => page.data) ?? [];
   const filteredCats = filterCats(cats, debouncedQuery);
+
+  const refresh = async () => {
+    if (isRefreshingRef.current) {
+      return;
+    }
+
+    isRefreshingRef.current = true;
+    setIsRefreshing(true);
+
+    pendingRestoreIndex.current = null;
+    lastSyncedPage.current = 1;
+
+    const el = parentRef.current;
+    if (el) {
+      el.scrollTop = 0;
+    }
+
+    syncUrlParams({ page: 1 });
+
+    try {
+      await queryClient.resetQueries({
+        queryKey: catsInfiniteQueryOptions.queryKey,
+      });
+    } finally {
+      isRefreshingRef.current = false;
+      setIsRefreshing(false);
+    }
+  };
+
+  const { pullDistance, isPulling } = usePullToRefresh({
+    scrollRef: parentRef,
+    onRefresh: refresh,
+    threshold: PULL_THRESHOLD_PX,
+    disabled: isRefreshing || status !== "success",
+  });
 
   const rowVirtualizer = useVirtualizer({
     count: filteredCats.length + 1,
@@ -80,6 +122,10 @@ export default function CatList({
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
+  const showPullIndicator = isPulling || isRefreshing;
+  const pullIndicatorHeight = isRefreshing
+    ? PULL_THRESHOLD_PX
+    : pullDistance;
 
   useEffect(() => {
     if (isFirstDebouncedQuery.current) {
@@ -203,63 +249,90 @@ export default function CatList({
     syncUrlParams({ page });
   }, [filteredCats.length, status, virtualItems]);
 
-  if (status === "pending") {
+  if (status === "pending" && !isRefreshing) {
     return <p>Loading...</p>;
   }
 
-  if (status === "error") {
+  if (status === "error" && !isRefreshing) {
     return <p>Error: {error.message}</p>;
   }
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-      <label className="flex shrink-0 flex-col gap-1 text-sm">
-        <span className="font-medium">Search</span>
-        <input
-          type="search"
-          value={inputValue}
-          onChange={(event) => setInputValue(event.target.value)}
-          placeholder="Filter by breed or country"
-          className="rounded border border-neutral-300 bg-transparent px-3 py-2"
-        />
-      </label>
-      <div ref={parentRef} className="min-h-0 flex-1 overflow-auto">
-        <div
-          className="relative w-full"
-          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+      <div className="flex shrink-0 items-end gap-2">
+        <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+          <span className="font-medium">Search</span>
+          <input
+            type="search"
+            value={inputValue}
+            onChange={(event) => setInputValue(event.target.value)}
+            placeholder="Filter by breed or country"
+            className="rounded border border-neutral-300 bg-transparent px-3 py-2"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          disabled={isRefreshing}
+          className="hidden shrink-0 rounded border border-neutral-300 px-3 py-2 text-sm font-medium sm:inline-flex disabled:opacity-50"
         >
-          {virtualItems.map((virtualRow) => {
-            const isLoaderRow = virtualRow.index > filteredCats.length - 1;
-            const cat = filteredCats[virtualRow.index];
+          {isRefreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {showPullIndicator ? (
+          <div
+            aria-live="polite"
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-end justify-center overflow-hidden text-sm text-neutral-600"
+            style={{ height: `${pullIndicatorHeight}px` }}
+          >
+            <p className="pb-2">
+              {isRefreshing
+                ? "Refreshing…"
+                : pullDistance >= PULL_THRESHOLD_PX
+                  ? "Release to refresh"
+                  : "Pull to refresh"}
+            </p>
+          </div>
+        ) : null}
+        <div ref={parentRef} className="h-full min-h-0 overflow-auto">
+          <div
+            className="relative w-full"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          >
+            {virtualItems.map((virtualRow) => {
+              const isLoaderRow = virtualRow.index > filteredCats.length - 1;
+              const cat = filteredCats[virtualRow.index];
 
-            return (
-              <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                className="absolute left-0 top-0 flex w-full items-center"
-                style={{
-                  height: `${ROW_HEIGHT}px`,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
-                {isLoaderRow ? (
-                  isFetchNextPageError ? (
-                    <p>Error loading more cats.</p>
-                  ) : hasNextPage ? (
-                    <p>Loading more...</p>
-                  ) : (
-                    <p>Nothing more to load.</p>
-                  )
-                ) : cat ? (
-                  <p className="truncate">
-                    <strong>{cat.breed}</strong>
-                    {" — "}
-                    {cat.country}
-                  </p>
-                ) : null}
-              </div>
-            );
-          })}
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  className="absolute left-0 top-0 flex w-full items-center"
+                  style={{
+                    height: `${ROW_HEIGHT}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {isLoaderRow ? (
+                    isFetchNextPageError ? (
+                      <p>Error loading more cats.</p>
+                    ) : hasNextPage ? (
+                      <p>Loading more...</p>
+                    ) : (
+                      <p>Nothing more to load.</p>
+                    )
+                  ) : cat ? (
+                    <p className="truncate">
+                      <strong>{cat.breed}</strong>
+                      {" — "}
+                      {cat.country}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
