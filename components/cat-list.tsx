@@ -1,52 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import {
-  useQueryClient,
-  type InfiniteData,
-} from "@tanstack/react-query";
+import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { Breed, Paginated } from "@/lib/api";
-import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { useCatSearch } from "@/lib/hooks/use-cat-search";
+import { useCatsRefresh } from "@/lib/hooks/use-cats-refresh";
+import { useInfiniteVirtualFetch } from "@/lib/hooks/use-infinite-virtual-fetch";
 import { usePullToRefresh } from "@/lib/hooks/use-pull-to-refresh";
-import {
-  catsIndexFromPage,
-  catsInfiniteQueryOptions,
-  catsPageFromScrollTop,
-  filterCats,
-} from "@/lib/queries/cats";
+import { useScrollPaddingEnd } from "@/lib/hooks/use-scroll-padding-end";
+import { useScrollRestore } from "@/lib/hooks/use-scroll-restore";
+import { useSyncPageFromScroll } from "@/lib/hooks/use-sync-page-from-scroll";
+import { catsIndexFromPage, filterCats } from "@/lib/queries/cats";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
 
 const ROW_HEIGHT = 44;
-const SEARCH_DEBOUNCE_MS = 300;
 const PULL_THRESHOLD_PX = 72;
-
-function syncUrlParams({ page, q }: { page?: number; q?: string }) {
-  const url = new URL(window.location.href);
-
-  if (page !== undefined) {
-    if (page <= 1) {
-      url.searchParams.delete("page");
-    } else {
-      url.searchParams.set("page", String(page));
-    }
-  }
-
-  if (q !== undefined) {
-    if (!q) {
-      url.searchParams.delete("q");
-    } else {
-      url.searchParams.set("q", q);
-    }
-  }
-
-  const next = `${url.pathname}${url.search}${url.hash}`;
-  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-
-  if (next !== current) {
-    window.history.replaceState(window.history.state, "", next);
-  }
-}
 
 export default function CatList({
   initialPage = 1,
@@ -65,65 +32,27 @@ export default function CatList({
     status,
   } = useCatsInfiniteQuery();
 
-  const queryClient = useQueryClient();
   const parentRef = useRef<HTMLDivElement | null>(null);
   const lastSyncedPage = useRef<number | null>(initialPage);
   const pendingRestoreIndex = useRef<number | null>(
     initialPage > 1 ? catsIndexFromPage(initialPage) : null,
   );
-  const [paddingEnd, setPaddingEnd] = useState(0);
-  const [inputValue, setInputValue] = useState(initialQuery);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const debouncedQuery = useDebouncedValue(inputValue, SEARCH_DEBOUNCE_MS);
-  const prevDebouncedQuery = useRef(debouncedQuery);
-  const isRefreshingRef = useRef(false);
+
+  const { inputValue, setInputValue, debouncedQuery } = useCatSearch({
+    initialQuery,
+    parentRef,
+    lastSyncedPage,
+    pendingRestoreIndex,
+  });
+
+  const { refresh, isRefreshing } = useCatsRefresh({
+    parentRef,
+    lastSyncedPage,
+    pendingRestoreIndex,
+  });
 
   const cats = data?.pages.flatMap((page) => page.data) ?? [];
   const filteredCats = filterCats(cats, debouncedQuery);
-
-  const refresh = async () => {
-    if (isRefreshingRef.current) {
-      return;
-    }
-
-    isRefreshingRef.current = true;
-    setIsRefreshing(true);
-
-    pendingRestoreIndex.current = null;
-    lastSyncedPage.current = 1;
-
-    const el = parentRef.current;
-    if (el) {
-      el.scrollTop = 0;
-    }
-
-    syncUrlParams({ page: 1 });
-
-    try {
-      queryClient.setQueryData<InfiniteData<Paginated<Breed>, number>>(
-        catsInfiniteQueryOptions.queryKey,
-        (old) => {
-          if (!old?.pages.length) {
-            return old;
-          }
-
-          return {
-            pages: old.pages.slice(0, 1),
-            pageParams: old.pageParams.slice(0, 1),
-          };
-        },
-      );
-
-      await queryClient.refetchQueries({
-        queryKey: catsInfiniteQueryOptions.queryKey,
-      });
-    } catch {
-      // Keep cached page-1 data visible when the network refresh fails.
-    } finally {
-      isRefreshingRef.current = false;
-      setIsRefreshing(false);
-    }
-  };
 
   const { pullDistance, isPulling } = usePullToRefresh({
     scrollRef: parentRef,
@@ -131,6 +60,8 @@ export default function CatList({
     threshold: PULL_THRESHOLD_PX,
     disabled: isRefreshing || status !== "success",
   });
+
+  const paddingEnd = useScrollPaddingEnd(parentRef, status);
 
   const rowVirtualizer = useVirtualizer({
     count: filteredCats.length + 1,
@@ -153,141 +84,34 @@ export default function CatList({
     ? PULL_THRESHOLD_PX
     : pullDistance;
 
-  useEffect(() => {
-    // Skip mount / Strict-Mode re-invoke when the value did not actually change.
-    // A one-shot "first run" flag flips on the first invoke, so Strict Mode's
-    // second invoke would wipe pendingRestore and ?page=.
-    if (prevDebouncedQuery.current === debouncedQuery) {
-      return;
-    }
-    prevDebouncedQuery.current = debouncedQuery;
+  useScrollRestore({
+    parentRef,
+    pendingRestoreIndex,
+    status,
+    paddingEnd,
+    filteredCount: filteredCats.length,
+    hasNextPage: Boolean(hasNextPage),
+    rowHeight: ROW_HEIGHT,
+  });
 
-    lastSyncedPage.current = 1;
-    pendingRestoreIndex.current = null;
-
-    const el = parentRef.current;
-    if (el) {
-      el.scrollTop = 0;
-    }
-
-    syncUrlParams({ page: 1, q: debouncedQuery.trim() });
-  }, [debouncedQuery]);
-
-  useEffect(() => {
-    if (status !== "success") {
-      return;
-    }
-
-    const el = parentRef.current;
-    if (!el) {
-      return;
-    }
-
-    const updatePadding = () => {
-      setPaddingEnd(el.clientHeight);
-    };
-
-    updatePadding();
-    const observer = new ResizeObserver(updatePadding);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [status]);
-
-  // One-shot restore: settle on scrollTop offset — never retry-fight the user.
-  // (overscan makes virtualItems[0].index lag the true top row.)
-  useEffect(() => {
-    if (pendingRestoreIndex.current == null || status !== "success") {
-      return;
-    }
-
-    if (paddingEnd === 0 || filteredCats.length === 0) {
-      return;
-    }
-
-    const el = parentRef.current;
-    if (!el || el.clientHeight === 0) {
-      return;
-    }
-
-    const pending = pendingRestoreIndex.current;
-
-    // Wait for enough filtered rows before restoring when more pages exist.
-    // Never clamp-and-clear early — that wipes ?page=N down to page 1 in the URL.
-    if (pending > filteredCats.length - 1) {
-      if (hasNextPage) {
-        return;
-      }
-      pendingRestoreIndex.current = null;
-      return;
-    }
-
-    const offset = pending * ROW_HEIGHT;
-    const maxScroll = el.scrollHeight - el.clientHeight;
-
-    if (maxScroll < offset) {
-      return;
-    }
-
-    el.scrollTop = offset;
-    pendingRestoreIndex.current = null;
-  }, [filteredCats.length, paddingEnd, status, hasNextPage]);
-
-  useEffect(() => {
-    const el = parentRef.current;
-    // Wait until the scroll element is measured so we don't page-fetch from a
-    // pre-layout virtual range (that raced URL ?page= restore).
-    if (!el || el.clientHeight === 0) {
-      return;
-    }
-
-    const lastItem = virtualItems.at(-1);
-
-    if (!lastItem) {
-      return;
-    }
-
-    if (
-      lastItem.index >= filteredCats.length - 1 &&
-      hasNextPage &&
-      !isFetchingNextPage
-    ) {
-      void fetchNextPage();
-    }
-  }, [
-    hasNextPage,
-    fetchNextPage,
-    filteredCats.length,
-    isFetchingNextPage,
+  useInfiniteVirtualFetch({
+    parentRef,
     virtualItems,
-  ]);
+    filteredCount: filteredCats.length,
+    hasNextPage: Boolean(hasNextPage),
+    isFetchingNextPage,
+    fetchNextPage,
+  });
 
-  useEffect(() => {
-    if (status !== "success" || filteredCats.length === 0) {
-      return;
-    }
-
-    if (pendingRestoreIndex.current != null) {
-      return;
-    }
-
-    const el = parentRef.current;
-    if (!el) {
-      return;
-    }
-
-    const page = catsPageFromScrollTop(
-      el.scrollTop,
-      filteredCats.length,
-      ROW_HEIGHT,
-    );
-
-    if (lastSyncedPage.current === page) {
-      return;
-    }
-
-    lastSyncedPage.current = page;
-    syncUrlParams({ page });
-  }, [filteredCats.length, status, virtualItems]);
+  useSyncPageFromScroll({
+    parentRef,
+    lastSyncedPage,
+    pendingRestoreIndex,
+    status,
+    filteredCount: filteredCats.length,
+    rowHeight: ROW_HEIGHT,
+    virtualItems,
+  });
 
   if (status === "pending" && !isRefreshing) {
     return <p>Loading...</p>;
