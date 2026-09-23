@@ -52,11 +52,13 @@ export default async function BreedDetailPage({
     <main
       id="main-content"
       tabIndex={-1}
-      className="flex flex-1 flex-col p-8 outline-none"
+      className="flex min-h-0 flex-1 flex-col overflow-auto outline-none"
     >
-      <HydrationBoundary state={dehydrate(queryClient)}>
-        <CatDetail slug={parsedSlug} />
-      </HydrationBoundary>
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
+        <HydrationBoundary state={dehydrate(queryClient)}>
+          <CatDetail slug={parsedSlug} />
+        </HydrationBoundary>
+      </div>
     </main>
   );
 }
