@@ -37,6 +37,21 @@ export function filterCats(cats: Breed[], q: string): Breed[] {
   );
 }
 
+export function breedToSlug(breed: string): string {
+  return breed
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function findBreedBySlug(
+  breeds: Breed[],
+  slug: string,
+): Breed | undefined {
+  return breeds.find((cat) => breedToSlug(cat.breed) === slug);
+}
+
 export function catsIndexFromPage(page: number) {
   return (page - 1) * CATS_PAGE_SIZE;
 }
