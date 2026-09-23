@@ -1,26 +1,53 @@
+import { z } from "zod";
 import { getCatFact, getCats } from "@/lib/api";
 import type { Breed, Paginated } from "@/lib/api";
 
 export const CATS_PAGE_SIZE = 10;
+export const CATS_MAX_PAGE_PARAM = 1000;
+export const CATS_MAX_SEARCH_LENGTH = 100;
+
+const CatsPageParamSchema = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .max(CATS_MAX_PAGE_PARAM)
+  .catch(1);
+
+const CatsSearchParamSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.slice(0, CATS_MAX_SEARCH_LENGTH));
+export const BreedSlugSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+
+function firstSearchParam(
+  value: string | string[] | undefined | null,
+): string | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export function parseCatsPageParam(
-  value: string | string[] | undefined,
+  value: string | string[] | undefined | null,
 ): number {
-  const raw = Array.isArray(value) ? value[0] : value;
-  const page = Number.parseInt(raw ?? "", 10);
-
-  if (!Number.isFinite(page) || page < 1) {
-    return 1;
-  }
-
-  return page;
+  return CatsPageParamSchema.parse(firstSearchParam(value) ?? "");
 }
 
 export function parseCatsSearchParam(
-  value: string | string[] | undefined,
+  value: string | string[] | undefined | null,
 ): string {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return (raw ?? "").trim();
+  return CatsSearchParamSchema.parse(firstSearchParam(value) ?? "");
+}
+
+export function parseBreedSlug(value: string): string | undefined {
+  const result = BreedSlugSchema.safeParse(value);
+  return result.success ? result.data : undefined;
 }
 
 export function filterCats(cats: Breed[], q: string): Breed[] {
