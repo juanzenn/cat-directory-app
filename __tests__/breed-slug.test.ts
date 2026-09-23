@@ -1,6 +1,12 @@
 import { expect, test } from "vitest";
 import type { Breed } from "@/lib/api";
-import { breedToSlug, findBreedBySlug } from "@/lib/queries/cats";
+import {
+  breedToSlug,
+  findBreedBySlug,
+  parseBreedSlug,
+  parseCatsPageParam,
+  parseCatsSearchParam,
+} from "@/lib/queries/cats";
 
 const breeds: Breed[] = [
   {
@@ -32,4 +38,29 @@ test("findBreedBySlug returns matching breed", () => {
 
 test("findBreedBySlug returns undefined when missing", () => {
   expect(findBreedBySlug(breeds, "siamese")).toBeUndefined();
+});
+
+test("parseBreedSlug accepts valid slugs", () => {
+  expect(parseBreedSlug("abyssinian")).toBe("abyssinian");
+  expect(parseBreedSlug("american-bobtail")).toBe("american-bobtail");
+});
+
+test("parseBreedSlug rejects invalid slugs", () => {
+  expect(parseBreedSlug("")).toBeUndefined();
+  expect(parseBreedSlug("Abyssinian")).toBeUndefined();
+  expect(parseBreedSlug("foo bar")).toBeUndefined();
+  expect(parseBreedSlug("-leading")).toBeUndefined();
+});
+
+test("parseCatsPageParam clamps invalid and oversized values", () => {
+  expect(parseCatsPageParam(undefined)).toBe(1);
+  expect(parseCatsPageParam("0")).toBe(1);
+  expect(parseCatsPageParam("abc")).toBe(1);
+  expect(parseCatsPageParam("3")).toBe(3);
+  expect(parseCatsPageParam("999999")).toBe(1);
+});
+
+test("parseCatsSearchParam trims and caps length", () => {
+  expect(parseCatsSearchParam("  abi  ")).toBe("abi");
+  expect(parseCatsSearchParam("x".repeat(120)).length).toBe(100);
 });

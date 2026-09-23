@@ -3,11 +3,15 @@ import {
   type InfiniteData,
   type OmitKeyof,
 } from "@tanstack/react-query";
-import type { PersistQueryClientOptions } from "@tanstack/query-persist-client-core";
+import type {
+  PersistedClient,
+  PersistQueryClientOptions,
+} from "@tanstack/query-persist-client-core";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { PersistedCatsInfiniteSchema } from "@/lib/api";
 import { catsInfiniteQueryOptions } from "@/lib/queries/cats";
 
-export const CATS_PERSIST_KEY = "cat-directory-cats-v2";
+export const CATS_PERSIST_KEY = "cat-directory-cats-v3";
 export const CATS_PERSIST_MAX_AGE_MS = 1000 * 60 * 60 * 24;
 export const CATS_PERSIST_MAX_PAGES = 3;
 
@@ -36,6 +40,49 @@ export function trimInfiniteDataToPersistedPages(
   };
 }
 
+/** Drop corrupt or stale shapes so hydrate cannot poison the UI. */
+export function parsePersistedCatsInfinite(data: unknown) {
+  const result = PersistedCatsInfiniteSchema.safeParse(data);
+  return result.success ? result.data : undefined;
+}
+
+function isCatsQueryKey(queryKey: unknown): boolean {
+  return (
+    Array.isArray(queryKey) &&
+    queryKey[0] === catsInfiniteQueryOptions.queryKey[0]
+  );
+}
+
+export function deserializePersistedClient(cached: string): PersistedClient {
+  const persisted = JSON.parse(cached) as PersistedClient;
+  const queries = persisted.clientState?.queries;
+
+  if (!Array.isArray(queries)) {
+    return persisted;
+  }
+
+  persisted.clientState.queries = queries.filter((query) => {
+    if (!isCatsQueryKey(query.queryKey)) {
+      return true;
+    }
+
+    const data = query.state?.data;
+    if (data == null) {
+      return true;
+    }
+
+    const validated = parsePersistedCatsInfinite(data);
+    if (validated === undefined) {
+      return false;
+    }
+
+    query.state.data = validated;
+    return true;
+  });
+
+  return persisted;
+}
+
 export function getCatsPersistOptions(): OmitKeyof<
   PersistQueryClientOptions,
   "queryClient"
@@ -44,6 +91,7 @@ export function getCatsPersistOptions(): OmitKeyof<
     persister: createSyncStoragePersister({
       storage: typeof window !== "undefined" ? window.localStorage : undefined,
       key: CATS_PERSIST_KEY,
+      deserialize: deserializePersistedClient,
     }),
     maxAge: CATS_PERSIST_MAX_AGE_MS,
     dehydrateOptions: {
