@@ -83,17 +83,29 @@ export function catsIndexFromPage(page: number) {
   return (page - 1) * CATS_PAGE_SIZE;
 }
 
+/** Maps a filtered item index to scrollTop for a multi-column grid. */
+export function catsScrollTopFromIndex(
+  itemIndex: number,
+  rowHeight: number,
+  columns: number,
+) {
+  const cols = Math.max(1, columns);
+  return Math.floor(itemIndex / cols) * rowHeight;
+}
+
 export function catsPageFromScrollTop(
   scrollTop: number,
   itemCount: number,
   rowHeight: number,
+  columns = 1,
 ) {
   if (itemCount <= 0) {
     return 1;
   }
 
+  const cols = Math.max(1, columns);
   const visibleStartIndex = Math.min(
-    Math.floor(scrollTop / rowHeight),
+    Math.floor(scrollTop / rowHeight) * cols,
     itemCount - 1,
   );
 

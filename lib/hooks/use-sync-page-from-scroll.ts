@@ -6,22 +6,24 @@ import { syncUrlParams } from "@/lib/url/sync-url-params";
 
 type UseSyncPageFromScrollOptions = {
   parentRef: RefObject<HTMLElement | null>;
-  lastSyncedPage: RefObject<number | null>;
-  pendingRestoreIndex: RefObject<number | null>;
+  lastSyncedPageRef: RefObject<number | null>;
+  pendingRestoreIndexRef: RefObject<number | null>;
   status: string;
   filteredCount: number;
   rowHeight: number;
+  columns?: number;
   /** Re-run when the virtual range changes (scroll position proxy). */
   virtualItems: unknown;
 };
 
 export function useSyncPageFromScroll({
   parentRef,
-  lastSyncedPage,
-  pendingRestoreIndex,
+  lastSyncedPageRef,
+  pendingRestoreIndexRef,
   status,
   filteredCount,
   rowHeight,
+  columns = 1,
   virtualItems,
 }: UseSyncPageFromScrollOptions) {
   useEffect(() => {
@@ -29,7 +31,7 @@ export function useSyncPageFromScroll({
       return;
     }
 
-    if (pendingRestoreIndex.current != null) {
+    if (pendingRestoreIndexRef.current != null) {
       return;
     }
 
@@ -42,19 +44,21 @@ export function useSyncPageFromScroll({
       el.scrollTop,
       filteredCount,
       rowHeight,
+      columns,
     );
 
-    if (lastSyncedPage.current === page) {
+    if (lastSyncedPageRef.current === page) {
       return;
     }
 
-    lastSyncedPage.current = page;
+    lastSyncedPageRef.current = page;
     syncUrlParams({ page });
   }, [
+    columns,
     filteredCount,
-    lastSyncedPage,
+    lastSyncedPageRef,
     parentRef,
-    pendingRestoreIndex,
+    pendingRestoreIndexRef,
     rowHeight,
     status,
     virtualItems,

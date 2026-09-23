@@ -1,30 +1,33 @@
 "use client";
 
 import { useEffect, type RefObject } from "react";
+import { catsScrollTopFromIndex } from "@/lib/queries/cats";
 
 type UseScrollRestoreOptions = {
   parentRef: RefObject<HTMLElement | null>;
-  pendingRestoreIndex: RefObject<number | null>;
+  pendingRestoreIndexRef: RefObject<number | null>;
   status: string;
   paddingEnd: number;
   filteredCount: number;
   hasNextPage: boolean;
   rowHeight: number;
+  columns?: number;
 };
 
 export function useScrollRestore({
   parentRef,
-  pendingRestoreIndex,
+  pendingRestoreIndexRef,
   status,
   paddingEnd,
   filteredCount,
   hasNextPage,
   rowHeight,
+  columns = 1,
 }: UseScrollRestoreOptions) {
   // One-shot restore: settle on scrollTop offset — never retry-fight the user.
   // (overscan makes virtualItems[0].index lag the true top row.)
   useEffect(() => {
-    if (pendingRestoreIndex.current == null || status !== "success") {
+    if (pendingRestoreIndexRef.current == null || status !== "success") {
       return;
     }
 
@@ -37,7 +40,7 @@ export function useScrollRestore({
       return;
     }
 
-    const pending = pendingRestoreIndex.current;
+    const pending = pendingRestoreIndexRef.current;
 
     // Wait for enough filtered rows before restoring when more pages exist.
     // Never clamp-and-clear early — that wipes ?page=N down to page 1 in the URL.
@@ -45,11 +48,11 @@ export function useScrollRestore({
       if (hasNextPage) {
         return;
       }
-      pendingRestoreIndex.current = null;
+      pendingRestoreIndexRef.current = null;
       return;
     }
 
-    const offset = pending * rowHeight;
+    const offset = catsScrollTopFromIndex(pending, rowHeight, columns);
     const maxScroll = el.scrollHeight - el.clientHeight;
 
     if (maxScroll < offset) {
@@ -57,13 +60,14 @@ export function useScrollRestore({
     }
 
     el.scrollTop = offset;
-    pendingRestoreIndex.current = null;
+    pendingRestoreIndexRef.current = null;
   }, [
+    columns,
     filteredCount,
     hasNextPage,
     paddingEnd,
     parentRef,
-    pendingRestoreIndex,
+    pendingRestoreIndexRef,
     rowHeight,
     status,
   ]);
