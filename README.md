@@ -88,10 +88,10 @@ Measured impact of the shared-cache / client-detail path: [docs/lighthouse-findi
 
 ## Talking points
 
-- **Mobile detail Performance 81** — Lab LCP ~5.1s / TTI ~5.1s under Slow 4G + CPU throttle; unthrottled LCP on the same run ~0.9s. Index is 99 desktop / 100 mobile. Root cause matches architecture: client `CatDetail` resolving breed from the infinite query (possibly paging). Details and re-run commands: [docs/lighthouse-findings.md](docs/lighthouse-findings.md).
+- **Lighthouse full-category baseline** — Accessibility / Best Practices / SEO are **100** on Home and Detail (desktop + mobile). Index Performance is 99 / 100. Detail desktop Performance is 97. The only miss under the brief’s ≥90 bar is **mobile detail Performance 86** (lab LCP ~4.2s / TTI ~4.2s under Slow 4G + CPU throttle; unthrottled observed LCP ~0.8s). Root cause: client `CatDetail` resolving breed from the infinite query (possibly paging). Full tables and re-run commands: [docs/lighthouse-findings.md](docs/lighthouse-findings.md).
   - The API doesn't expose a "/breeds/[id]" endpoint. This leaves the strategy of searching for a breed very straightforward: look through the pages until you match one. This, for some breeds, can become expensive quickly. Lighthouse uses a throttled connection to mimic a slower device than usual. Because of that, the page looks "slow" on numbers. To make it faster, you'd have to use SSR directly on the page.
 
-- **Index near-perfect scores** — Documented baseline; no urgent work called out in lighthouse findings.
+- **Index / a11y / SEO near-perfect** — No urgent work outside mobile detail LCP.
   - There was close to no performance work done on the repo. I only cached the first page with TanStack Persistence, but I didn't allow myself to chase micro-optimizations in this version.
 
 - **No BFF / no env** — Axios base URL hardcoded to catfact.ninja.
