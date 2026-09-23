@@ -1,5 +1,6 @@
 export { catFactApi } from "./client";
 export { getCatFact, getCats } from "./cats";
+export { getErrorMessage } from "./errors";
 export {
   BreedSchema,
   CatFactSchema,

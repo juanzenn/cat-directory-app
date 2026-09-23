@@ -53,8 +53,20 @@ function isCatsQueryKey(queryKey: unknown): boolean {
   );
 }
 
+const EMPTY_PERSISTED_CLIENT: PersistedClient = {
+  timestamp: 0,
+  buster: "",
+  clientState: { mutations: [], queries: [] },
+};
+
 export function deserializePersistedClient(cached: string): PersistedClient {
-  const persisted = JSON.parse(cached) as PersistedClient;
+  let persisted: PersistedClient;
+  try {
+    persisted = JSON.parse(cached) as PersistedClient;
+  } catch {
+    return EMPTY_PERSISTED_CLIENT;
+  }
+
   const queries = persisted.clientState?.queries;
 
   if (!Array.isArray(queries)) {

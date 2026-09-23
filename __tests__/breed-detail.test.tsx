@@ -4,6 +4,7 @@ import {
   screen,
   waitFor,
   cleanup,
+  fireEvent,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import BreedDetailPage from "../app/breeds/[slug]/page";
@@ -165,6 +166,55 @@ test("CatDetail calls notFound when slug is missing after all pages", async () =
   });
 });
 
+test("CatDetail shows Retry when fetchNextPage fails while resolving slug", async () => {
+  mockGetCats.mockImplementation(async (params) => {
+    const page = params?.page ?? 1;
+    if (page === 1) {
+      return makePage(1, 2, [abyssinian]);
+    }
+    throw new Error("page 2 failed");
+  });
+
+  renderWithProviders(<CatDetail slug="aegean" />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Error loading more breeds.")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+  });
+
+  expect(mockNotFound).not.toHaveBeenCalled();
+  expect(screen.queryByText("Loading...")).toBeNull();
+
+  mockGetCats.mockResolvedValueOnce(makePage(2, 2, [aegean]));
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Aegean" }),
+    ).toBeDefined();
+  });
+});
+
+test("CatDetail initial error shows Retry via refetch", async () => {
+  mockGetCats.mockRejectedValue(new Error("Network down"));
+
+  renderWithProviders(<CatDetail slug="abyssinian" />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Network down")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+  });
+
+  mockGetCats.mockResolvedValue(makePage(1, 1, [abyssinian]));
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Abyssinian" }),
+    ).toBeDefined();
+  });
+});
+
 test("CatDetail shows breed info while random fact loads, then the fact", async () => {
   mockGetCats.mockResolvedValue(makePage(1, 1, [abyssinian]));
 
@@ -219,4 +269,34 @@ test("CatDetail fetches a new fact for each breed slug", async () => {
   });
 
   expect(mockGetCatFact).toHaveBeenCalledTimes(2);
+});
+
+test("RandomFact shows empty state for blank fact text", async () => {
+  mockGetCats.mockResolvedValue(makePage(1, 1, [abyssinian]));
+  mockGetCatFact.mockResolvedValue({ fact: "   ", length: 3 });
+
+  renderWithProviders(<CatDetail slug="abyssinian" />);
+
+  await waitFor(() => {
+    expect(screen.getByText("No fact available right now.")).toBeDefined();
+  });
+});
+
+test("RandomFact error shows Retry via refetch", async () => {
+  mockGetCats.mockResolvedValue(makePage(1, 1, [abyssinian]));
+  mockGetCatFact.mockRejectedValue(new Error("fact failed"));
+
+  renderWithProviders(<CatDetail slug="abyssinian" />);
+
+  await waitFor(() => {
+    expect(screen.getByText("fact failed")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+  });
+
+  mockGetCatFact.mockResolvedValue(sampleFact);
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  await waitFor(() => {
+    expect(screen.getByText(sampleFact.fact)).toBeDefined();
+  });
 });

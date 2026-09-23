@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { notFound, useSearchParams } from "next/navigation";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 import RandomFact from "@/components/random-fact";
 import {
   Card,
@@ -12,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getErrorMessage } from "@/lib/api/errors";
 import {
   findBreedBySlug,
   parseCatsPageParam,
@@ -19,15 +22,10 @@ import {
 } from "@/lib/queries/cats";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
 import { directoryHref } from "@/lib/url/sync-url-params";
-import { cn } from "@/lib/utils";
+import { cn, displayValue } from "@/lib/utils";
 
 const detailCardClass =
   "relative w-full max-w-lg gap-0 overflow-hidden rounded-lg bg-card py-0 ring-1 ring-foreground/10";
-
-function displayValue(value: string) {
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : "—";
-}
 
 function DetailShell({
   children,
@@ -81,6 +79,8 @@ export default function CatDetail({ slug }: { slug: string }) {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    isFetchNextPageError,
+    refetch,
     status,
   } = useCatsInfiniteQuery();
 
@@ -88,7 +88,13 @@ export default function CatDetail({ slug }: { slug: string }) {
   const breed = findBreedBySlug(cats, slug);
 
   useEffect(() => {
-    if (breed || status !== "success" || !hasNextPage || isFetchingNextPage) {
+    if (
+      breed ||
+      status !== "success" ||
+      !hasNextPage ||
+      isFetchingNextPage ||
+      isFetchNextPageError
+    ) {
       return;
     }
 
@@ -98,6 +104,7 @@ export default function CatDetail({ slug }: { slug: string }) {
     status,
     hasNextPage,
     isFetchingNextPage,
+    isFetchNextPageError,
     fetchNextPage,
   ]);
 
@@ -119,9 +126,11 @@ export default function CatDetail({ slug }: { slug: string }) {
           <CardTitle className="font-heading text-xl font-semibold tracking-tight">
             Something went wrong
           </CardTitle>
-          <CardDescription role="alert" className="text-destructive">
-            Error: {error.message}
-          </CardDescription>
+          <QueryError
+            className="items-start gap-3 py-0 text-left"
+            message={getErrorMessage(error)}
+            onRetry={() => void refetch()}
+          />
           <Link
             href={backHref}
             className="mt-2 text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:underline"
@@ -148,7 +157,7 @@ export default function CatDetail({ slug }: { slug: string }) {
             tabIndex={-1}
             className="font-heading text-3xl font-semibold tracking-tight outline-none"
           >
-            {breed.breed}
+            {displayValue(breed.breed)}
           </h1>
           <CardDescription className="text-base">
             {displayValue(breed.country)}
@@ -173,8 +182,52 @@ export default function CatDetail({ slug }: { slug: string }) {
     );
   }
 
+  if (isFetchNextPageError) {
+    return (
+      <DetailShell>
+        <CardHeader className="gap-2 px-6 pt-6 pb-6">
+          <CardTitle className="font-heading text-xl font-semibold tracking-tight">
+            Something went wrong
+          </CardTitle>
+          <QueryError
+            className="items-start gap-3 py-0 text-left"
+            message="Error loading more breeds."
+            onRetry={() => void fetchNextPage()}
+          />
+          <Link
+            href={backHref}
+            className="mt-2 text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:underline"
+          >
+            ← Back to directory
+          </Link>
+        </CardHeader>
+      </DetailShell>
+    );
+  }
+
   if (hasNextPage || isFetchingNextPage) {
     return <DetailLoading />;
+  }
+
+  if (status === "success" && cats.length === 0) {
+    return (
+      <DetailShell>
+        <CardHeader className="gap-2 px-6 pt-6 pb-6">
+          <CardTitle className="font-heading text-xl font-semibold tracking-tight">
+            No breeds available
+          </CardTitle>
+          <EmptyState className="py-0 text-left">
+            The directory is empty right now.
+          </EmptyState>
+          <Link
+            href={backHref}
+            className="mt-2 text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:underline"
+          >
+            ← Back to directory
+          </Link>
+        </CardHeader>
+      </DetailShell>
+    );
   }
 
   return notFound();
