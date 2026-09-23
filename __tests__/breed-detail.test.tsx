@@ -37,7 +37,7 @@ function makePage(
   return {
     current_page: currentPage,
     data: breeds,
-    per_page: 10,
+    per_page: 12,
     total: breeds.length,
     last_page: lastPage,
     next_page_url: currentPage < lastPage ? `?page=${currentPage + 1}` : null,
@@ -151,8 +151,8 @@ test("CatDetail fetches next pages until slug is found", async () => {
     ).toBeDefined();
   });
 
-  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 10 });
-  expect(mockGetCats).toHaveBeenCalledWith({ page: 2, limit: 10 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 12 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 2, limit: 12 });
   expect(screen.getByText("Greece")).toBeDefined();
 });
 

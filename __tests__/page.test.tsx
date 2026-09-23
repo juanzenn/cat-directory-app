@@ -36,7 +36,7 @@ function makePage(
   return {
     current_page: currentPage,
     data: breeds,
-    per_page: 10,
+    per_page: 12,
     total: breeds.length,
     last_page: lastPage,
     next_page_url: currentPage < lastPage ? `?page=${currentPage + 1}` : null,
@@ -155,9 +155,9 @@ test("Page prefetches pages 1 through N for ?page=N", async () => {
   const jsx = await Page({ searchParams: Promise.resolve({ page: "3" }) });
 
   expect(mockGetCats).toHaveBeenCalledTimes(3);
-  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 10 });
-  expect(mockGetCats).toHaveBeenCalledWith({ page: 2, limit: 10 });
-  expect(mockGetCats).toHaveBeenCalledWith({ page: 3, limit: 10 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 12 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 2, limit: 12 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 3, limit: 12 });
 
   renderWithProviders(jsx);
 
@@ -252,7 +252,7 @@ test("Page with ?q does not pass search to getCats", async () => {
     searchParams: Promise.resolve({ q: "Abys", page: "1" }),
   });
 
-  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 10 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 12 });
   for (const call of mockGetCats.mock.calls) {
     expect(call[0]).not.toHaveProperty("q");
     expect(call[0]).not.toHaveProperty("search");
@@ -330,7 +330,7 @@ test("CatList Refresh button refetches from page 1 and clears page param", async
 
   await waitFor(() => {
     expect(mockGetCats.mock.calls.length).toBeGreaterThan(callsBefore);
-    expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 10 });
+    expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 12 });
     expect(new URL(window.location.href).searchParams.get("page")).toBeNull();
     expect(new URL(window.location.href).searchParams.get("q")).toBe("Aby");
   });
@@ -440,8 +440,8 @@ test("CatList keeps fetching pages while filter has no local matches", async () 
     expect(screen.getByText("Aegean")).toBeDefined();
   });
 
-  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 10 });
-  expect(mockGetCats).toHaveBeenCalledWith({ page: 2, limit: 10 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 12 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 2, limit: 12 });
   expect(screen.queryByText("Abyssinian")).toBeNull();
   expect(screen.queryByText(/No breeds match/)).toBeNull();
 });

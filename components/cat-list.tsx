@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -13,6 +13,7 @@ import { QueryError } from "@/components/query-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { Breed } from "@/lib/api";
 import { getErrorMessage } from "@/lib/api/errors";
 import { useCatSearch } from "@/lib/hooks/use-cat-search";
 import { useCatsRefresh } from "@/lib/hooks/use-cats-refresh";
@@ -31,11 +32,13 @@ import {
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
 import { cn } from "@/lib/utils";
 
-/** Name + country card + gap — tall enough that infinite fetch still triggers. */
-const CARD_ROW_HEIGHT = 112;
+/** Name + country card + gap — room for 2-line country on lg. */
+const CARD_ROW_HEIGHT = 136;
 const GRID_GAP_PX = 16;
 const PULL_THRESHOLD_PX = 72;
 const SCROLLBAR_GUTTER_PX = 12;
+const BREED_GRID_CLASS =
+  "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4";
 
 function DirectoryHeader({
   inputValue,
@@ -136,11 +139,36 @@ function PendingSkeletonGrid() {
       role="status"
       aria-live="polite"
       aria-label="Loading breeds"
-      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      className={BREED_GRID_CLASS}
     >
       <span className="sr-only">Loading breeds…</span>
       {Array.from({ length: BREED_CARD_SKELETON_COUNT }, (_, index) => (
         <BreedCardSkeleton key={index} />
+      ))}
+    </div>
+  );
+}
+
+/** CSS media-query grid — correct columns in SSR HTML before JS matchMedia. */
+function CssBreedGrid({
+  cats,
+  page,
+  q,
+}: {
+  cats: Breed[];
+  page: number;
+  q: string;
+}) {
+  return (
+    <div
+      role="list"
+      className={BREED_GRID_CLASS}
+      style={{ gridAutoRows: `${CARD_ROW_HEIGHT - GRID_GAP_PX}px` }}
+    >
+      {cats.map((cat, index) => (
+        <div key={`css-${cat.breed}-${index}`} role="listitem" className="min-h-0">
+          <BreedCard cat={cat} page={page} q={q} />
+        </div>
       ))}
     </div>
   );
@@ -182,6 +210,12 @@ export default function CatList({
     refetch,
     status,
   } = useCatsInfiniteQuery();
+  // SSR + first hydration paint use getServerSnapshot (always 1). Prefer a CSS
+  // media-query grid until mount so wide viewports are not stuck in 1 column.
+  const [layoutReady, setLayoutReady] = useState(false);
+  useEffect(() => {
+    setLayoutReady(true);
+  }, []);
 
   const parentRef = useRef<HTMLDivElement | null>(null);
   const lastSyncedPageRef = useRef<number | null>(initialPage);
@@ -240,26 +274,31 @@ export default function CatList({
     !isEmptyCatalog &&
     (Boolean(hasNextPage) || isFetchNextPageError || isFilterSearching);
 
+  const breedRowCount =
+    filteredCats.length === 0 ? 0 : Math.ceil(filteredCats.length / columns);
+  const virtualRowCount =
+    !layoutReady || isEmptyFilter || isEmptyCatalog || isFilterSearching
+      ? 0
+      : breedRowCount + (showLoaderSlot ? 1 : 0);
+
+  // Virtualize by rows; each row is a CSS grid matching the pre-mount layout
+  // so the handoff from CssBreedGrid does not jump columns/gaps.
   const rowVirtualizer = useVirtualizer({
-    count:
-      isEmptyFilter || isEmptyCatalog || isFilterSearching
-        ? 0
-        : filteredCats.length + (showLoaderSlot ? 1 : 0),
+    count: virtualRowCount,
     getScrollElement: () => parentRef.current,
     estimateSize: () => CARD_ROW_HEIGHT,
     overscan: 3,
-    lanes: columns,
     useFlushSync: false,
     paddingEnd,
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
-  // First paint (SSR/hydrate) can have cats but no measured scroll el yet.
-  // Keep cards on screen without faking a viewport that triggers fetchNextPage.
-  const showVirtualFallback =
-    status === "success" &&
-    filteredCats.length > 0 &&
-    virtualItems.length === 0;
+  // First paint after mount can have cats but no measured scroll el yet.
+  const showCssGridFallback =
+    !layoutReady ||
+    (status === "success" &&
+      filteredCats.length > 0 &&
+      virtualItems.length === 0);
   const showPullIndicator = isPulling && !isRefreshing;
   const pullIndicatorHeight = prefersReducedMotion
     ? showPullIndicator
@@ -270,7 +309,7 @@ export default function CatList({
   useScrollRestore({
     parentRef,
     pendingRestoreIndexRef,
-    status,
+    status: layoutReady ? status : "pending",
     paddingEnd,
     filteredCount: filteredCats.length,
     hasNextPage: Boolean(hasNextPage),
@@ -281,8 +320,8 @@ export default function CatList({
   useInfiniteVirtualFetch({
     parentRef,
     virtualItems,
-    filteredCount: filteredCats.length,
-    hasNextPage: Boolean(hasNextPage),
+    filteredCount: breedRowCount,
+    hasNextPage: layoutReady && Boolean(hasNextPage),
     isFetchingNextPage,
     fetchNextPage,
   });
@@ -315,7 +354,7 @@ export default function CatList({
     parentRef,
     lastSyncedPageRef,
     pendingRestoreIndexRef,
-    status,
+    status: layoutReady ? status : "pending",
     filteredCount: filteredCats.length,
     rowHeight: CARD_ROW_HEIGHT,
     columns,
@@ -392,9 +431,6 @@ export default function CatList({
     );
   }
 
-  const laneWidthPercent = 100 / columns;
-  const gapAdjust = ((columns - 1) * GRID_GAP_PX) / columns;
-
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col gap-8 overflow-hidden">
       {isRefreshing ? <RefreshingBadge /> : null}
@@ -432,105 +468,82 @@ export default function CatList({
             ) : (
               <PendingSkeletonGrid />
             )
+          ) : showCssGridFallback ? (
+            <CssBreedGrid cats={filteredCats} page={linkPage} q={linkQuery} />
           ) : (
             <>
               <div
                 role="list"
                 className="relative w-full"
-                style={{
-                  height: showVirtualFallback
-                    ? `${Math.ceil(filteredCats.length / columns) * CARD_ROW_HEIGHT}px`
-                    : `${rowVirtualizer.getTotalSize()}px`,
-                }}
+                style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
               >
-                {showVirtualFallback
-                  ? filteredCats.map((cat, index) => {
-                      const lane = index % columns;
-                      const row = Math.floor(index / columns);
-                      return (
-                        <div
-                          key={`fallback-${cat.breed}-${index}`}
-                          role="listitem"
-                          data-index={index}
-                          className="absolute top-0 box-border"
-                          style={{
-                            height: `${CARD_ROW_HEIGHT}px`,
-                            width: `calc(${laneWidthPercent}% - ${gapAdjust}px)`,
-                            left: `calc(${lane * laneWidthPercent}% + ${lane * (GRID_GAP_PX / columns)}px)`,
-                            paddingBottom: `${GRID_GAP_PX}px`,
-                            paddingRight:
-                              lane < columns - 1 ? `${GRID_GAP_PX}px` : 0,
-                            transform: `translateY(${row * CARD_ROW_HEIGHT}px)`,
-                          }}
-                        >
-                          <BreedCard cat={cat} page={linkPage} q={linkQuery} />
-                        </div>
-                      );
-                    })
-                  : virtualItems.map((virtualRow) => {
-                      const isLoaderRow =
-                        showLoaderSlot &&
-                        virtualRow.index > filteredCats.length - 1;
-                      const cat = filteredCats[virtualRow.index];
-                      const lane = virtualRow.lane;
+                {virtualItems.map((virtualRow) => {
+                  const isLoaderRow =
+                    showLoaderSlot && virtualRow.index >= breedRowCount;
 
-                      if (isLoaderRow) {
-                        return (
-                          <div
-                            key={virtualRow.key}
-                            data-index={virtualRow.index}
-                            className="absolute top-0 left-0 w-full"
-                            style={{
-                              height: `${virtualRow.size}px`,
-                              transform: `translateY(${virtualRow.start}px)`,
-                              paddingBottom: `${GRID_GAP_PX}px`,
-                            }}
-                          >
-                            {isFetchNextPageError ? (
-                              <QueryError
-                                className="flex h-full flex-row items-center justify-center gap-2"
-                                message="Error loading more cats."
-                                onRetry={retryFetchNext}
-                              />
-                            ) : (
-                              <FetchMoreSkeletonRow columns={columns} />
-                            )}
-                          </div>
-                        );
-                      }
+                  if (isLoaderRow) {
+                    return (
+                      <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        className="absolute top-0 left-0 w-full"
+                        style={{
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        {isFetchNextPageError ? (
+                          <QueryError
+                            className="flex h-full flex-row items-center justify-center gap-2"
+                            message="Error loading more cats."
+                            onRetry={retryFetchNext}
+                          />
+                        ) : (
+                          <FetchMoreSkeletonRow columns={columns} />
+                        )}
+                      </div>
+                    );
+                  }
 
-                      return (
+                  const startIndex = virtualRow.index * columns;
+                  const rowCats = filteredCats.slice(
+                    startIndex,
+                    startIndex + columns,
+                  );
+
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      className="absolute top-0 left-0 grid w-full gap-4"
+                      style={{
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                        paddingBottom: `${GRID_GAP_PX}px`,
+                      }}
+                    >
+                      {rowCats.map((cat, colIndex) => (
                         <div
-                          key={virtualRow.key}
+                          key={`${cat.breed}-${startIndex + colIndex}`}
                           role="listitem"
-                          data-index={virtualRow.index}
-                          className="absolute top-0 box-border"
-                          style={{
-                            height: `${virtualRow.size}px`,
-                            width: `calc(${laneWidthPercent}% - ${gapAdjust}px)`,
-                            left: `calc(${lane * laneWidthPercent}% + ${lane * (GRID_GAP_PX / columns)}px)`,
-                            paddingBottom: `${GRID_GAP_PX}px`,
-                            paddingRight:
-                              lane < columns - 1 ? `${GRID_GAP_PX}px` : 0,
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
                         >
-                          {cat ? (
-                            <BreedCard
-                              cat={cat}
-                              page={linkPage}
-                              q={linkQuery}
-                            />
-                          ) : null}
+                          <BreedCard
+                            cat={cat}
+                            page={linkPage}
+                            q={linkQuery}
+                          />
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
+                  );
+                })}
                 {showEndOfList ? (
                   <p
                     role="status"
                     className="absolute left-0 right-0 mx-auto max-w-sm border-t border-border/60 pt-4 text-center text-sm text-muted-foreground"
                     style={{
-                      top: `${Math.ceil(filteredCats.length / columns) * CARD_ROW_HEIGHT}px`,
+                      top: `${breedRowCount * CARD_ROW_HEIGHT}px`,
                     }}
                   >
                     Nothing more to load.

@@ -65,4 +65,4 @@ export function BreedCardSkeleton({ className }: { className?: string }) {
   );
 }
 
-export const BREED_CARD_SKELETON_COUNT = 8;
+export const BREED_CARD_SKELETON_COUNT = 12;
