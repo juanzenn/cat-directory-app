@@ -1,0 +1,91 @@
+"use client";
+
+import { useEffect } from "react";
+import Link from "next/link";
+import { notFound, useSearchParams } from "next/navigation";
+import RandomFact from "@/components/random-fact";
+import {
+  findBreedBySlug,
+  parseCatsPageParam,
+  parseCatsSearchParam,
+} from "@/lib/queries/cats";
+import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
+import { directoryHref } from "@/lib/url/sync-url-params";
+
+function displayValue(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "—";
+}
+
+export default function CatDetail({ slug }: { slug: string }) {
+  const searchParams = useSearchParams();
+  const backHref = directoryHref({
+    page: parseCatsPageParam(searchParams.get("page") ?? undefined),
+    q: parseCatsSearchParam(searchParams.get("q") ?? undefined),
+  });
+
+  const {
+    data,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    status,
+  } = useCatsInfiniteQuery();
+
+  const cats = data?.pages.flatMap((page) => page.data) ?? [];
+  const breed = findBreedBySlug(cats, slug);
+
+  useEffect(() => {
+    if (breed || status !== "success" || !hasNextPage || isFetchingNextPage) {
+      return;
+    }
+
+    void fetchNextPage();
+  }, [
+    breed,
+    status,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  ]);
+
+  if (status === "pending") {
+    return <p>Loading...</p>;
+  }
+
+  if (status === "error" && !data) {
+    return <p>Error: {error.message}</p>;
+  }
+
+  if (breed) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Link
+          href={backHref}
+          className="text-sm text-neutral-600 underline-offset-2 hover:underline"
+        >
+          ← Back to directory
+        </Link>
+        <h1 className="text-3xl font-semibold tracking-tight">{breed.breed}</h1>
+        <dl className="grid gap-3 text-sm sm:grid-cols-[8rem_1fr]">
+          <dt className="font-medium text-neutral-600">Country</dt>
+          <dd>{displayValue(breed.country)}</dd>
+          <dt className="font-medium text-neutral-600">Origin</dt>
+          <dd>{displayValue(breed.origin)}</dd>
+          <dt className="font-medium text-neutral-600">Coat</dt>
+          <dd>{displayValue(breed.coat)}</dd>
+          <dt className="font-medium text-neutral-600">Pattern</dt>
+          <dd>{displayValue(breed.pattern)}</dd>
+        </dl>
+        <RandomFact slug={slug} />
+      </div>
+    );
+  }
+
+  if (hasNextPage || isFetchingNextPage) {
+    return <p>Loading...</p>;
+  }
+
+  return notFound();
+}

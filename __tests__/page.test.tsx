@@ -181,6 +181,37 @@ test("CatList shows success status with cats", async () => {
   });
 });
 
+test("CatList links each breed to its detail page", async () => {
+  mockGetCats.mockResolvedValue(page1);
+
+  renderWithProviders(<CatList />);
+
+  await waitFor(() => {
+    expect(screen.getByRole("link", { name: "Abyssinian" })).toBeDefined();
+  });
+
+  expect(
+    screen.getByRole("link", { name: "Abyssinian" }).getAttribute("href"),
+  ).toBe("/breeds/abyssinian");
+  expect(
+    screen.getByRole("link", { name: "Aegean" }).getAttribute("href"),
+  ).toBe("/breeds/aegean");
+});
+
+test("CatList breed links forward q and page", async () => {
+  mockGetCats.mockResolvedValue(page1);
+
+  renderWithProviders(<CatList initialPage={3} initialQuery="Aby" />);
+
+  await waitFor(() => {
+    expect(screen.getByRole("link", { name: "Abyssinian" })).toBeDefined();
+  });
+
+  expect(
+    screen.getByRole("link", { name: "Abyssinian" }).getAttribute("href"),
+  ).toBe("/breeds/abyssinian?page=3&q=Aby");
+});
+
 test("Page with ?q does not pass search to getCats", async () => {
   mockGetCats.mockResolvedValue(page1);
 

@@ -1,3 +1,34 @@
+export function buildCatsSearchString({
+  page,
+  q,
+}: {
+  page?: number;
+  q?: string;
+}): string {
+  const params = new URLSearchParams();
+
+  if (page !== undefined && page > 1) {
+    params.set("page", String(page));
+  }
+
+  if (q) {
+    params.set("q", q);
+  }
+
+  const search = params.toString();
+  return search ? `?${search}` : "";
+}
+
+export function directoryHref({
+  page,
+  q,
+}: {
+  page?: number;
+  q?: string;
+} = {}): string {
+  return `/${buildCatsSearchString({ page, q })}`;
+}
+
 export function syncUrlParams({ page, q }: { page?: number; q?: string }) {
   const url = new URL(window.location.href);
 

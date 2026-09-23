@@ -1,4 +1,4 @@
-import { getCats } from "@/lib/api";
+import { getCatFact, getCats } from "@/lib/api";
 import type { Breed, Paginated } from "@/lib/api";
 
 export const CATS_PAGE_SIZE = 10;
@@ -37,6 +37,21 @@ export function filterCats(cats: Breed[], q: string): Breed[] {
   );
 }
 
+export function breedToSlug(breed: string): string {
+  return breed
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function findBreedBySlug(
+  breeds: Breed[],
+  slug: string,
+): Breed | undefined {
+  return breeds.find((cat) => breedToSlug(cat.breed) === slug);
+}
+
 export function catsIndexFromPage(page: number) {
   return (page - 1) * CATS_PAGE_SIZE;
 }
@@ -69,3 +84,13 @@ export const catsInfiniteQueryOptions = {
       : undefined,
   networkMode: "offlineFirst" as const,
 };
+
+export function catFactQueryOptions(slug: string) {
+  return {
+    queryKey: ["cat-fact", slug] as const,
+    queryFn: getCatFact,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always" as const,
+  };
+}
