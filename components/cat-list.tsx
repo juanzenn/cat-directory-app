@@ -16,13 +16,22 @@ import {
   filterCats,
 } from "@/lib/queries/cats";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
+import { buildCatsSearchString } from "@/lib/url/sync-url-params";
 import type { Breed } from "@/lib/api";
 
-function CatRowLink({ cat }: { cat: Breed }) {
+function CatRowLink({
+  cat,
+  page,
+  q,
+}: {
+  cat: Breed;
+  page: number;
+  q: string;
+}) {
   return (
     <p className="truncate">
       <Link
-        href={`/breeds/${breedToSlug(cat.breed)}`}
+        href={`/breeds/${breedToSlug(cat.breed)}${buildCatsSearchString({ page, q })}`}
         className="font-bold underline-offset-2 hover:underline"
       >
         {cat.breed}
@@ -142,6 +151,9 @@ export default function CatList({
     return <p>Error: {error.message}</p>;
   }
 
+  const linkPage = lastSyncedPage.current ?? initialPage;
+  const linkQuery = debouncedQuery;
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <div className="flex shrink-0 items-end gap-2">
@@ -200,7 +212,7 @@ export default function CatList({
                       transform: `translateY(${index * ROW_HEIGHT}px)`,
                     }}
                   >
-                    <CatRowLink cat={cat} />
+                    <CatRowLink cat={cat} page={linkPage} q={linkQuery} />
                   </div>
                 ))
               : virtualItems.map((virtualRow) => {
@@ -226,7 +238,7 @@ export default function CatList({
                           <p>Nothing more to load.</p>
                         )
                       ) : cat ? (
-                        <CatRowLink cat={cat} />
+                        <CatRowLink cat={cat} page={linkPage} q={linkQuery} />
                       ) : null}
                     </div>
                   );

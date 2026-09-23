@@ -2,10 +2,15 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, useSearchParams } from "next/navigation";
 import RandomFact from "@/components/random-fact";
-import { findBreedBySlug } from "@/lib/queries/cats";
+import {
+  findBreedBySlug,
+  parseCatsPageParam,
+  parseCatsSearchParam,
+} from "@/lib/queries/cats";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
+import { directoryHref } from "@/lib/url/sync-url-params";
 
 function displayValue(value: string) {
   const trimmed = value.trim();
@@ -13,6 +18,12 @@ function displayValue(value: string) {
 }
 
 export default function CatDetail({ slug }: { slug: string }) {
+  const searchParams = useSearchParams();
+  const backHref = directoryHref({
+    page: parseCatsPageParam(searchParams.get("page") ?? undefined),
+    q: parseCatsSearchParam(searchParams.get("q") ?? undefined),
+  });
+
   const {
     data,
     error,
@@ -51,7 +62,7 @@ export default function CatDetail({ slug }: { slug: string }) {
     return (
       <div className="flex flex-col gap-6">
         <Link
-          href="/"
+          href={backHref}
           className="text-sm text-neutral-600 underline-offset-2 hover:underline"
         >
           ← Back to directory

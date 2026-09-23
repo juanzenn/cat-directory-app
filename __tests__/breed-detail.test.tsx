@@ -18,9 +18,11 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const mockNotFound = vi.fn(() => null);
+const mockSearchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
   notFound: () => mockNotFound(),
+  useSearchParams: () => mockSearchParams,
 }));
 
 const mockGetCats = vi.mocked(getCats);
@@ -80,6 +82,8 @@ beforeEach(() => {
   mockGetCatFact.mockReset();
   mockGetCatFact.mockResolvedValue(sampleFact);
   mockNotFound.mockClear();
+  mockSearchParams.delete("page");
+  mockSearchParams.delete("q");
   getQueryClient().clear();
 });
 
@@ -109,6 +113,24 @@ test("BreedDetailPage shows full breed fields from cached cats", async () => {
   expect(
     screen.getByRole("link", { name: "← Back to directory" }).getAttribute("href"),
   ).toBe("/");
+});
+
+test("CatDetail back link preserves q and page from the URL", async () => {
+  mockGetCats.mockResolvedValue(makePage(1, 1, [abyssinian]));
+  mockSearchParams.set("q", "Aby");
+  mockSearchParams.set("page", "3");
+
+  renderWithProviders(<CatDetail slug="abyssinian" />);
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Abyssinian" }),
+    ).toBeDefined();
+  });
+
+  expect(
+    screen.getByRole("link", { name: "← Back to directory" }).getAttribute("href"),
+  ).toBe("/?page=3&q=Aby");
 });
 
 test("CatDetail fetches next pages until slug is found", async () => {
