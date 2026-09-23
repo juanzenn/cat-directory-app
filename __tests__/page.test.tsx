@@ -77,6 +77,20 @@ beforeEach(() => {
   mockGetCats.mockReset();
   getQueryClient().clear();
 
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
+
   Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
     configurable: true,
     get() {
@@ -157,7 +171,8 @@ test("CatList shows pending status", () => {
 
   renderWithProviders(<CatList />);
 
-  expect(screen.getByText("Loading...")).toBeDefined();
+  expect(screen.getByRole("status", { name: "Loading breeds" })).toBeDefined();
+  expect(screen.getByText("Loading breeds…")).toBeDefined();
 });
 
 test("CatList shows error status", async () => {
@@ -187,14 +202,14 @@ test("CatList links each breed to its detail page", async () => {
   renderWithProviders(<CatList />);
 
   await waitFor(() => {
-    expect(screen.getByRole("link", { name: "Abyssinian" })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Abyssinian/ })).toBeDefined();
   });
 
   expect(
-    screen.getByRole("link", { name: "Abyssinian" }).getAttribute("href"),
+    screen.getByRole("link", { name: /Abyssinian/ }).getAttribute("href"),
   ).toBe("/breeds/abyssinian");
   expect(
-    screen.getByRole("link", { name: "Aegean" }).getAttribute("href"),
+    screen.getByRole("link", { name: /Aegean/ }).getAttribute("href"),
   ).toBe("/breeds/aegean");
 });
 
@@ -204,11 +219,11 @@ test("CatList breed links forward q and page", async () => {
   renderWithProviders(<CatList initialPage={3} initialQuery="Aby" />);
 
   await waitFor(() => {
-    expect(screen.getByRole("link", { name: "Abyssinian" })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Abyssinian/ })).toBeDefined();
   });
 
   expect(
-    screen.getByRole("link", { name: "Abyssinian" }).getAttribute("href"),
+    screen.getByRole("link", { name: /Abyssinian/ }).getAttribute("href"),
   ).toBe("/breeds/abyssinian?page=3&q=Aby");
 });
 
@@ -335,7 +350,8 @@ test("CatList refresh keeps cats visible while refetch is in-flight", async () =
 
   expect(screen.getByText("Abyssinian")).toBeDefined();
   expect(screen.getByText("Aegean")).toBeDefined();
-  expect(screen.queryByText("Loading...")).toBeNull();
+  expect(screen.queryByLabelText("Loading breeds")).toBeNull();
+  expect(screen.queryByText("Loading breeds…")).toBeNull();
 
   await act(async () => {
     resolveRefresh(page1);

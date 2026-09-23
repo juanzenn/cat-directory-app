@@ -11,14 +11,14 @@ import { syncUrlParams } from "@/lib/url/sync-url-params";
 
 type UseCatsRefreshOptions = {
   parentRef: RefObject<HTMLElement | null>;
-  lastSyncedPage: RefObject<number | null>;
-  pendingRestoreIndex: RefObject<number | null>;
+  lastSyncedPageRef: RefObject<number | null>;
+  pendingRestoreIndexRef: RefObject<number | null>;
 };
 
 export function useCatsRefresh({
   parentRef,
-  lastSyncedPage,
-  pendingRestoreIndex,
+  lastSyncedPageRef,
+  pendingRestoreIndexRef,
 }: UseCatsRefreshOptions) {
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -32,8 +32,8 @@ export function useCatsRefresh({
     isRefreshingRef.current = true;
     setIsRefreshing(true);
 
-    pendingRestoreIndex.current = null;
-    lastSyncedPage.current = 1;
+    pendingRestoreIndexRef.current = null;
+    lastSyncedPageRef.current = 1;
 
     const el = parentRef.current;
     if (el) {

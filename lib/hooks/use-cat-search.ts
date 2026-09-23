@@ -9,15 +9,15 @@ const SEARCH_DEBOUNCE_MS = 300;
 type UseCatSearchOptions = {
   initialQuery?: string;
   parentRef: RefObject<HTMLElement | null>;
-  lastSyncedPage: RefObject<number | null>;
-  pendingRestoreIndex: RefObject<number | null>;
+  lastSyncedPageRef: RefObject<number | null>;
+  pendingRestoreIndexRef: RefObject<number | null>;
 };
 
 export function useCatSearch({
   initialQuery = "",
   parentRef,
-  lastSyncedPage,
-  pendingRestoreIndex,
+  lastSyncedPageRef,
+  pendingRestoreIndexRef,
 }: UseCatSearchOptions) {
   const [inputValue, setInputValue] = useState(initialQuery);
   const debouncedQuery = useDebouncedValue(inputValue, SEARCH_DEBOUNCE_MS);
@@ -32,8 +32,8 @@ export function useCatSearch({
     }
     prevDebouncedQuery.current = debouncedQuery;
 
-    lastSyncedPage.current = 1;
-    pendingRestoreIndex.current = null;
+    lastSyncedPageRef.current = 1;
+    pendingRestoreIndexRef.current = null;
 
     const el = parentRef.current;
     if (el) {
@@ -41,7 +41,7 @@ export function useCatSearch({
     }
 
     syncUrlParams({ page: 1, q: debouncedQuery.trim() });
-  }, [debouncedQuery, lastSyncedPage, parentRef, pendingRestoreIndex]);
+  }, [debouncedQuery, lastSyncedPageRef, parentRef, pendingRestoreIndexRef]);
 
   return { inputValue, setInputValue, debouncedQuery };
 }

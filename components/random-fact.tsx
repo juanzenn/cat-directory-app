@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { useCatFactQuery } from "@/lib/queries/use-cat-fact-query";
 
 export default function RandomFact({ slug }: { slug: string }) {
@@ -7,15 +8,25 @@ export default function RandomFact({ slug }: { slug: string }) {
 
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-lg font-medium tracking-tight">Random fact</h2>
+      <h2 className="font-heading text-sm font-semibold tracking-tight text-accent-foreground">
+        Random fact
+      </h2>
       {status === "pending" ? (
-        <p role="status" aria-live="polite">
-          Loading...
-        </p>
+        <>
+          <div className="space-y-2" aria-hidden>
+            <Skeleton className="h-4 w-full rounded-md bg-muted-foreground/10" />
+            <Skeleton className="h-4 w-5/6 rounded-md bg-muted-foreground/10" />
+          </div>
+          <p role="status" aria-live="polite" className="sr-only">
+            Loading...
+          </p>
+        </>
       ) : status === "error" ? (
-        <p role="alert">Error: {error.message}</p>
+        <p role="alert" className="text-sm text-destructive">
+          Error: {error.message}
+        </p>
       ) : (
-        <p className="text-sm text-muted">{data.fact}</p>
+        <p className="text-sm leading-relaxed text-foreground/90">{data.fact}</p>
       )}
     </section>
   );

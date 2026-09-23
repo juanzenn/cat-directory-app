@@ -5,16 +5,66 @@ import Link from "next/link";
 import { notFound, useSearchParams } from "next/navigation";
 import RandomFact from "@/components/random-fact";
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
   findBreedBySlug,
   parseCatsPageParam,
   parseCatsSearchParam,
 } from "@/lib/queries/cats";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
 import { directoryHref } from "@/lib/url/sync-url-params";
+import { cn } from "@/lib/utils";
+
+const detailCardClass =
+  "relative w-full max-w-lg gap-0 overflow-hidden rounded-lg bg-card py-0 ring-1 ring-foreground/10";
 
 function displayValue(value: string) {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : "—";
+}
+
+function DetailShell({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className="flex w-full flex-1 flex-col items-center justify-center">
+      <Card className={cn(detailCardClass, className)}>
+        <div className="scratcher-stripe h-1 w-full shrink-0" aria-hidden />
+        {children}
+      </Card>
+    </div>
+  );
+}
+
+function DetailLoading() {
+  return (
+    <DetailShell>
+      <CardHeader className="gap-3 px-6 pt-6 pb-2">
+        <Skeleton className="h-4 w-36 rounded-md bg-muted-foreground/10" />
+        <Skeleton className="h-8 w-2/3 rounded-md bg-muted-foreground/15" />
+        <Skeleton className="h-4 w-1/3 rounded-md bg-muted-foreground/10" />
+      </CardHeader>
+      <CardContent className="space-y-3 px-6 pb-6">
+        <Skeleton className="h-4 w-full rounded-md bg-muted-foreground/10" />
+        <Skeleton className="h-4 w-5/6 rounded-md bg-muted-foreground/10" />
+        <Skeleton className="h-4 w-4/6 rounded-md bg-muted-foreground/10" />
+        <Skeleton className="mt-4 h-20 w-full rounded-md bg-muted-foreground/10" />
+      </CardContent>
+      <p role="status" aria-live="polite" className="sr-only">
+        Loading...
+      </p>
+    </DetailShell>
+  );
 }
 
 export default function CatDetail({ slug }: { slug: string }) {
@@ -59,54 +109,72 @@ export default function CatDetail({ slug }: { slug: string }) {
   }, [breed]);
 
   if (status === "pending") {
-    return (
-      <p role="status" aria-live="polite">
-        Loading...
-      </p>
-    );
+    return <DetailLoading />;
   }
 
   if (status === "error" && !data) {
-    return <p role="alert">Error: {error.message}</p>;
+    return (
+      <DetailShell>
+        <CardHeader className="gap-2 px-6 pt-6 pb-6">
+          <CardTitle className="font-heading text-xl font-semibold tracking-tight">
+            Something went wrong
+          </CardTitle>
+          <CardDescription role="alert" className="text-destructive">
+            Error: {error.message}
+          </CardDescription>
+          <Link
+            href={backHref}
+            className="mt-2 text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:underline"
+          >
+            ← Back to directory
+          </Link>
+        </CardHeader>
+      </DetailShell>
+    );
   }
 
   if (breed) {
     return (
-      <div className="flex flex-col gap-6">
-        <Link
-          href={backHref}
-          className="text-sm text-muted underline-offset-2 hover:underline focus-visible:underline"
-        >
-          ← Back to directory
-        </Link>
-        <h1
-          ref={headingRef}
-          tabIndex={-1}
-          className="text-3xl font-semibold tracking-tight outline-none"
-        >
-          {breed.breed}
-        </h1>
-        <dl className="grid gap-3 text-sm sm:grid-cols-[8rem_1fr]">
-          <dt className="font-medium text-muted">Country</dt>
-          <dd>{displayValue(breed.country)}</dd>
-          <dt className="font-medium text-muted">Origin</dt>
-          <dd>{displayValue(breed.origin)}</dd>
-          <dt className="font-medium text-muted">Coat</dt>
-          <dd>{displayValue(breed.coat)}</dd>
-          <dt className="font-medium text-muted">Pattern</dt>
-          <dd>{displayValue(breed.pattern)}</dd>
-        </dl>
-        <RandomFact slug={slug} />
-      </div>
+      <DetailShell>
+        <CardHeader className="gap-1 px-6 pt-5 pb-4">
+          <Link
+            href={backHref}
+            className="mb-2 w-fit text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:underline"
+          >
+            ← Back to directory
+          </Link>
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="font-heading text-3xl font-semibold tracking-tight outline-none"
+          >
+            {breed.breed}
+          </h1>
+          <CardDescription className="text-base">
+            {displayValue(breed.country)}
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="px-6 pb-6">
+          <dl className="grid gap-3 border-t border-border/60 pt-4 text-sm sm:grid-cols-[7rem_1fr]">
+            <dt className="font-medium text-muted-foreground">Origin</dt>
+            <dd>{displayValue(breed.origin)}</dd>
+            <dt className="font-medium text-muted-foreground">Coat</dt>
+            <dd>{displayValue(breed.coat)}</dd>
+            <dt className="font-medium text-muted-foreground">Pattern</dt>
+            <dd>{displayValue(breed.pattern)}</dd>
+          </dl>
+
+          <div className="mt-6 rounded-md bg-accent/60 px-4 py-4 ring-1 ring-foreground/5">
+            <RandomFact slug={slug} />
+          </div>
+        </CardContent>
+      </DetailShell>
     );
   }
 
   if (hasNextPage || isFetchingNextPage) {
-    return (
-      <p role="status" aria-live="polite">
-        Loading...
-      </p>
-    );
+    return <DetailLoading />;
   }
 
   return notFound();

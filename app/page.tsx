@@ -28,14 +28,11 @@ export default async function Home({
     <main
       id="main-content"
       tabIndex={-1}
-      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-8 outline-none"
+      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden outline-none"
     >
-      <h1 className="shrink-0 text-3xl font-semibold tracking-tight">
-        Cat Directory
-      </h1>
       <h2 className="sr-only">Breeds</h2>
       <HydrationBoundary state={dehydrate(queryClient)}>
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
           <CatList initialPage={page} initialQuery={query} />
         </div>
       </HydrationBoundary>

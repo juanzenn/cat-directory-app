@@ -1,10 +1,19 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import Link from "next/link";
+import { RefreshCw } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  BreedCard,
+  BreedCardSkeleton,
+  BREED_CARD_SKELETON_COUNT,
+} from "@/components/breed-card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useCatSearch } from "@/lib/hooks/use-cat-search";
 import { useCatsRefresh } from "@/lib/hooks/use-cats-refresh";
+import { useGridColumns } from "@/lib/hooks/use-grid-columns";
 import { useInfiniteVirtualFetch } from "@/lib/hooks/use-infinite-virtual-fetch";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-prefers-reduced-motion";
 import { usePullToRefresh } from "@/lib/hooks/use-pull-to-refresh";
@@ -12,40 +21,142 @@ import { useScrollPaddingEnd } from "@/lib/hooks/use-scroll-padding-end";
 import { useScrollRestore } from "@/lib/hooks/use-scroll-restore";
 import { useSyncPageFromScroll } from "@/lib/hooks/use-sync-page-from-scroll";
 import {
-  breedToSlug,
   CATS_MAX_SEARCH_LENGTH,
   catsIndexFromPage,
   filterCats,
 } from "@/lib/queries/cats";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
-import { buildCatsSearchString } from "@/lib/url/sync-url-params";
-import type { Breed } from "@/lib/api";
 
-function CatRowLink({
-  cat,
-  page,
-  q,
+/** Name + country card + gap — tall enough that infinite fetch still triggers. */
+const CARD_ROW_HEIGHT = 112;
+const GRID_GAP_PX = 16;
+const PULL_THRESHOLD_PX = 72;
+const SCROLLBAR_GUTTER_PX = 12;
+
+function DirectoryHeader({
+  inputValue,
+  setInputValue,
+  onRefresh,
+  isRefreshing,
+  refreshDisabled,
 }: {
-  cat: Breed;
-  page: number;
-  q: string;
+  inputValue: string;
+  setInputValue: (value: string) => void;
+  onRefresh: () => void;
+  isRefreshing: boolean;
+  refreshDisabled?: boolean;
 }) {
   return (
-    <p className="truncate">
-      <Link
-        href={`/breeds/${breedToSlug(cat.breed)}${buildCatsSearchString({ page, q })}`}
-        className="font-bold underline-offset-2 hover:underline focus-visible:underline"
-      >
-        {cat.breed}
-      </Link>
-      {" — "}
-      {cat.country}
+    <header className="mx-auto flex w-full max-w-xl shrink-0 flex-col items-center gap-5 text-center">
+      <h1 className="font-heading text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+        Cat Directory
+      </h1>
+      <div className="flex w-full items-center gap-2">
+        <div className="min-w-0 flex-1 text-left">
+          <Label htmlFor="breed-search" className="sr-only">
+            Search
+          </Label>
+          <Input
+            id="breed-search"
+            type="search"
+            value={inputValue}
+            maxLength={CATS_MAX_SEARCH_LENGTH}
+            onChange={(event) => setInputValue(event.target.value)}
+            placeholder="Filter by breed or country"
+            className="h-11 rounded-full border-border/80 bg-card px-4 text-base shadow-sm md:text-base"
+          />
+        </div>
+        <Button
+          type="button"
+          variant="default"
+          size="icon-lg"
+          onClick={onRefresh}
+          disabled={refreshDisabled || isRefreshing}
+          aria-label={isRefreshing ? "Refreshing…" : "Refresh"}
+          className="shrink-0 rounded-full"
+        >
+          <RefreshCw className="size-4" aria-hidden />
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+function RefreshingBadge() {
+  return (
+    <p
+      role="status"
+      aria-live="polite"
+      className="absolute top-0 right-0 z-20 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm"
+    >
+      Refreshing…
     </p>
   );
 }
 
-const ROW_HEIGHT = 44;
-const PULL_THRESHOLD_PX = 72;
+function PullIndicator({
+  height,
+  pullDistance,
+}: {
+  height: number;
+  pullDistance: number;
+}) {
+  const label =
+    pullDistance >= PULL_THRESHOLD_PX
+      ? "Release to refresh"
+      : "Pull to refresh";
+
+  return (
+    <div
+      aria-live="polite"
+      className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center overflow-hidden"
+      style={{ height: `${height}px` }}
+    >
+      <div className="flex items-center gap-2.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-md ring-1 ring-primary/30">
+        <div
+          className="h-1.5 w-12 rounded-sm bg-[repeating-linear-gradient(90deg,var(--sisal-cream)_0_5px,transparent_5px_10px)]"
+          aria-hidden
+        />
+        <span>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function PendingSkeletonGrid() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="Loading breeds"
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+    >
+      <span className="sr-only">Loading breeds…</span>
+      {Array.from({ length: BREED_CARD_SKELETON_COUNT }, (_, index) => (
+        <BreedCardSkeleton key={index} />
+      ))}
+    </div>
+  );
+}
+
+function FetchMoreSkeletonRow({ columns }: { columns: number }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="Loading more breeds"
+      className="grid h-full w-full gap-4"
+      style={{
+        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+      }}
+    >
+      <span className="sr-only">Loading more…</span>
+      {Array.from({ length: columns }, (_, index) => (
+        <BreedCardSkeleton key={index} />
+      ))}
+    </div>
+  );
+}
 
 export default function CatList({
   initialPage = 1,
@@ -65,23 +176,24 @@ export default function CatList({
   } = useCatsInfiniteQuery();
 
   const parentRef = useRef<HTMLDivElement | null>(null);
-  const lastSyncedPage = useRef<number | null>(initialPage);
-  const pendingRestoreIndex = useRef<number | null>(
+  const lastSyncedPageRef = useRef<number | null>(initialPage);
+  const pendingRestoreIndexRef = useRef<number | null>(
     initialPage > 1 ? catsIndexFromPage(initialPage) : null,
   );
   const prefersReducedMotion = usePrefersReducedMotion();
+  const columns = useGridColumns();
 
   const { inputValue, setInputValue, debouncedQuery } = useCatSearch({
     initialQuery,
     parentRef,
-    lastSyncedPage,
-    pendingRestoreIndex,
+    lastSyncedPageRef,
+    pendingRestoreIndexRef,
   });
 
   const { refresh, isRefreshing } = useCatsRefresh({
     parentRef,
-    lastSyncedPage,
-    pendingRestoreIndex,
+    lastSyncedPageRef,
+    pendingRestoreIndexRef,
   });
 
   const cats = data?.pages.flatMap((page) => page.data) ?? [];
@@ -100,39 +212,44 @@ export default function CatList({
 
   const paddingEnd = useScrollPaddingEnd(parentRef, status);
 
+  const showLoaderSlot =
+    !isEmptyFilter && (Boolean(hasNextPage) || isFetchNextPageError);
+
   const rowVirtualizer = useVirtualizer({
-    count: isEmptyFilter ? 0 : filteredCats.length + 1,
+    count: isEmptyFilter
+      ? 0
+      : filteredCats.length + (showLoaderSlot ? 1 : 0),
     getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 5,
+    estimateSize: () => CARD_ROW_HEIGHT,
+    overscan: 3,
+    lanes: columns,
     useFlushSync: false,
     paddingEnd,
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   // First paint (SSR/hydrate) can have cats but no measured scroll el yet.
-  // Keep rows on screen without faking a viewport that triggers fetchNextPage.
+  // Keep cards on screen without faking a viewport that triggers fetchNextPage.
   const showVirtualFallback =
     status === "success" &&
     filteredCats.length > 0 &&
     virtualItems.length === 0;
-  const showPullIndicator = isPulling || isRefreshing;
+  const showPullIndicator = isPulling && !isRefreshing;
   const pullIndicatorHeight = prefersReducedMotion
     ? showPullIndicator
       ? PULL_THRESHOLD_PX
       : 0
-    : isRefreshing
-      ? PULL_THRESHOLD_PX
-      : pullDistance;
+    : pullDistance;
 
   useScrollRestore({
     parentRef,
-    pendingRestoreIndex,
+    pendingRestoreIndexRef,
     status,
     paddingEnd,
     filteredCount: filteredCats.length,
     hasNextPage: Boolean(hasNextPage),
-    rowHeight: ROW_HEIGHT,
+    rowHeight: CARD_ROW_HEIGHT,
+    columns,
   });
 
   useInfiniteVirtualFetch({
@@ -146,11 +263,12 @@ export default function CatList({
 
   useSyncPageFromScroll({
     parentRef,
-    lastSyncedPage,
-    pendingRestoreIndex,
+    lastSyncedPageRef,
+    pendingRestoreIndexRef,
     status,
     filteredCount: filteredCats.length,
-    rowHeight: ROW_HEIGHT,
+    rowHeight: CARD_ROW_HEIGHT,
+    columns,
     virtualItems,
   });
 
@@ -159,23 +277,7 @@ export default function CatList({
     main?.focus({ preventScroll: true });
   }, []);
 
-  if (status === "pending" && !isRefreshing) {
-    return (
-      <p role="status" aria-live="polite">
-        Loading...
-      </p>
-    );
-  }
-
-  if (status === "error" && !data && !isRefreshing) {
-    return (
-      <p role="alert">
-        Error: {error.message}
-      </p>
-    );
-  }
-
-  const linkPage = lastSyncedPage.current ?? initialPage;
+  const linkPage = lastSyncedPageRef.current ?? initialPage;
   const linkQuery = debouncedQuery;
   const resultsLabel = debouncedQuery.trim()
     ? filteredCats.length === 0
@@ -183,47 +285,64 @@ export default function CatList({
       : `Showing ${filteredCats.length} of ${cats.length} breeds`
     : `${filteredCats.length} breeds`;
 
-  return (
-    <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-      <div className="flex shrink-0 items-end gap-2">
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
-          <span className="font-medium">Search</span>
-          <input
-            type="search"
-            value={inputValue}
-            maxLength={CATS_MAX_SEARCH_LENGTH}
-            onChange={(event) => setInputValue(event.target.value)}
-            placeholder="Filter by breed or country"
-            className="rounded border border-neutral-300 bg-transparent px-3 py-2"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={isRefreshing}
-          className="inline-flex shrink-0 rounded border border-neutral-300 px-3 py-2 text-sm font-medium disabled:opacity-50"
+  const showEndOfList =
+    status === "success" &&
+    !isEmptyFilter &&
+    filteredCats.length > 0 &&
+    !hasNextPage &&
+    !isFetchNextPageError;
+
+  const header = (
+    <DirectoryHeader
+      inputValue={inputValue}
+      setInputValue={setInputValue}
+      onRefresh={() => void refresh()}
+      isRefreshing={isRefreshing}
+      refreshDisabled={status === "pending" && !data}
+    />
+  );
+
+  if (status === "pending" && !isRefreshing && !data) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 flex-col gap-8 overflow-hidden">
+        {header}
+        <div
+          className="min-h-0 flex-1 overflow-auto"
+          style={{ paddingRight: SCROLLBAR_GUTTER_PX }}
         >
-          {isRefreshing ? "Refreshing…" : "Refresh"}
-        </button>
+          <PendingSkeletonGrid />
+        </div>
       </div>
+    );
+  }
+
+  if (status === "error" && !data && !isRefreshing) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-1 flex-col gap-8 overflow-hidden">
+        {header}
+        <p role="alert" className="text-center text-sm text-destructive">
+          Error: {error.message}
+        </p>
+      </div>
+    );
+  }
+
+  const laneWidthPercent = 100 / columns;
+  const gapAdjust = ((columns - 1) * GRID_GAP_PX) / columns;
+
+  return (
+    <div className="relative flex h-full min-h-0 flex-1 flex-col gap-8 overflow-hidden">
+      {isRefreshing ? <RefreshingBadge /> : null}
+      {header}
       <p role="status" aria-live="polite" className="sr-only">
         {resultsLabel}
       </p>
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {showPullIndicator ? (
-          <div
-            aria-live="polite"
-            className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-end justify-center overflow-hidden text-sm text-muted"
-            style={{ height: `${pullIndicatorHeight}px` }}
-          >
-            <p className="pb-2">
-              {isRefreshing
-                ? "Refreshing…"
-                : pullDistance >= PULL_THRESHOLD_PX
-                  ? "Release to refresh"
-                  : "Pull to refresh"}
-            </p>
-          </div>
+          <PullIndicator
+            height={pullIndicatorHeight}
+            pullDistance={pullDistance}
+          />
         ) : null}
         <div
           ref={parentRef}
@@ -231,78 +350,130 @@ export default function CatList({
           aria-label="Breed list"
           aria-busy={isRefreshing}
           className="h-full min-h-0 overflow-auto"
+          style={{ paddingRight: SCROLLBAR_GUTTER_PX }}
         >
           {isEmptyFilter ? (
-            <p role="status" className="py-2 text-sm text-muted">
+            <p
+              role="status"
+              className="py-8 text-center text-sm text-muted-foreground"
+            >
               No breeds match “{debouncedQuery.trim()}”.
             </p>
           ) : (
-            <div
-              role="list"
-              className="relative w-full"
-              style={{
-                height: showVirtualFallback
-                  ? `${(filteredCats.length + 1) * ROW_HEIGHT}px`
-                  : `${rowVirtualizer.getTotalSize()}px`,
-              }}
-            >
-              {showVirtualFallback
-                ? filteredCats.map((cat, index) => (
-                    <div
-                      key={`fallback-${cat.breed}-${index}`}
-                      role="listitem"
-                      data-index={index}
-                      className="absolute left-0 top-0 flex w-full items-center"
-                      style={{
-                        height: `${ROW_HEIGHT}px`,
-                        transform: `translateY(${index * ROW_HEIGHT}px)`,
-                      }}
-                    >
-                      <CatRowLink cat={cat} page={linkPage} q={linkQuery} />
-                    </div>
-                  ))
-                : virtualItems.map((virtualRow) => {
-                    const isLoaderRow =
-                      virtualRow.index > filteredCats.length - 1;
-                    const cat = filteredCats[virtualRow.index];
+            <>
+              <div
+                role="list"
+                className="relative w-full"
+                style={{
+                  height: showVirtualFallback
+                    ? `${Math.ceil(filteredCats.length / columns) * CARD_ROW_HEIGHT}px`
+                    : `${rowVirtualizer.getTotalSize()}px`,
+                }}
+              >
+                {showVirtualFallback
+                  ? filteredCats.map((cat, index) => {
+                      const lane = index % columns;
+                      const row = Math.floor(index / columns);
+                      return (
+                        <div
+                          key={`fallback-${cat.breed}-${index}`}
+                          role="listitem"
+                          data-index={index}
+                          className="absolute top-0 box-border"
+                          style={{
+                            height: `${CARD_ROW_HEIGHT}px`,
+                            width: `calc(${laneWidthPercent}% - ${gapAdjust}px)`,
+                            left: `calc(${lane * laneWidthPercent}% + ${lane * (GRID_GAP_PX / columns)}px)`,
+                            paddingBottom: `${GRID_GAP_PX}px`,
+                            paddingRight:
+                              lane < columns - 1 ? `${GRID_GAP_PX}px` : 0,
+                            transform: `translateY(${row * CARD_ROW_HEIGHT}px)`,
+                          }}
+                        >
+                          <BreedCard cat={cat} page={linkPage} q={linkQuery} />
+                        </div>
+                      );
+                    })
+                  : virtualItems.map((virtualRow) => {
+                      const isLoaderRow =
+                        showLoaderSlot &&
+                        virtualRow.index > filteredCats.length - 1;
+                      const cat = filteredCats[virtualRow.index];
+                      const lane = virtualRow.lane;
 
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        role={isLoaderRow ? undefined : "listitem"}
-                        data-index={virtualRow.index}
-                        className="absolute left-0 top-0 flex w-full items-center"
-                        style={{
-                          height: `${ROW_HEIGHT}px`,
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        {isLoaderRow ? (
-                          isFetchNextPageError ? (
-                            <p role="alert" className="flex items-center gap-2">
-                              <span>Error loading more cats.</span>
-                              <button
-                                type="button"
-                                onClick={() => void fetchNextPage()}
-                                className="rounded border border-neutral-300 px-2 py-1 text-sm font-medium"
+                      if (isLoaderRow) {
+                        return (
+                          <div
+                            key={virtualRow.key}
+                            data-index={virtualRow.index}
+                            className="absolute top-0 left-0 w-full"
+                            style={{
+                              height: `${virtualRow.size}px`,
+                              transform: `translateY(${virtualRow.start}px)`,
+                              paddingBottom: `${GRID_GAP_PX}px`,
+                            }}
+                          >
+                            {isFetchNextPageError ? (
+                              <p
+                                role="alert"
+                                className="flex h-full items-center justify-center gap-2 text-sm"
                               >
-                                Retry
-                              </button>
-                            </p>
-                          ) : hasNextPage ? (
-                            <p role="status" aria-live="polite">
-                              Loading more...
-                            </p>
-                          ) : (
-                            <p role="status">Nothing more to load.</p>
-                          )
-                        ) : cat ? (
-                          <CatRowLink cat={cat} page={linkPage} q={linkQuery} />
-                        ) : null}
-                      </div>
-                    );
-                  })}
-            </div>
+                                <span>Error loading more cats.</span>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => void fetchNextPage()}
+                                >
+                                  Retry
+                                </Button>
+                              </p>
+                            ) : (
+                              <FetchMoreSkeletonRow columns={columns} />
+                            )}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          role="listitem"
+                          data-index={virtualRow.index}
+                          className="absolute top-0 box-border"
+                          style={{
+                            height: `${virtualRow.size}px`,
+                            width: `calc(${laneWidthPercent}% - ${gapAdjust}px)`,
+                            left: `calc(${lane * laneWidthPercent}% + ${lane * (GRID_GAP_PX / columns)}px)`,
+                            paddingBottom: `${GRID_GAP_PX}px`,
+                            paddingRight:
+                              lane < columns - 1 ? `${GRID_GAP_PX}px` : 0,
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
+                          {cat ? (
+                            <BreedCard
+                              cat={cat}
+                              page={linkPage}
+                              q={linkQuery}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                {showEndOfList ? (
+                  <p
+                    role="status"
+                    className="absolute left-0 right-0 mx-auto max-w-sm border-t border-border/60 pt-4 text-center text-sm text-muted-foreground"
+                    style={{
+                      top: `${Math.ceil(filteredCats.length / columns) * CARD_ROW_HEIGHT}px`,
+                    }}
+                  >
+                    Nothing more to load.
+                  </p>
+                ) : null}
+              </div>
+            </>
           )}
         </div>
       </div>

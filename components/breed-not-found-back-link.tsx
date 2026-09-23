@@ -18,7 +18,7 @@ export default function BreedNotFoundBackLink() {
   return (
     <Link
       href={backHref}
-      className="text-sm text-muted underline-offset-2 hover:underline focus-visible:underline"
+      className="text-sm text-muted-foreground underline-offset-2 hover:underline focus-visible:underline"
     >
       ← Back to directory
     </Link>
