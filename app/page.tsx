@@ -25,10 +25,15 @@ export default async function Home({
   });
 
   return (
-    <main className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-8">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-8 outline-none"
+    >
       <h1 className="shrink-0 text-3xl font-semibold tracking-tight">
         Cat Directory
       </h1>
+      <h2 className="sr-only">Breeds</h2>
       <HydrationBoundary state={dehydrate(queryClient)}>
         <div className="min-h-0 flex-1 overflow-hidden">
           <CatList initialPage={page} initialQuery={query} />

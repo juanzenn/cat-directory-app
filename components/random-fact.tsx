@@ -9,11 +9,13 @@ export default function RandomFact({ slug }: { slug: string }) {
     <section className="flex flex-col gap-2">
       <h2 className="text-lg font-medium tracking-tight">Random fact</h2>
       {status === "pending" ? (
-        <p>Loading...</p>
+        <p role="status" aria-live="polite">
+          Loading...
+        </p>
       ) : status === "error" ? (
-        <p>Error: {error.message}</p>
+        <p role="alert">Error: {error.message}</p>
       ) : (
-        <p className="text-sm text-neutral-700">{data.fact}</p>
+        <p className="text-sm text-muted">{data.fact}</p>
       )}
     </section>
   );
