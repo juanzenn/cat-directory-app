@@ -8,12 +8,13 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import BreedDetailPage from "../app/breeds/[slug]/page";
 import CatDetail from "../components/cat-detail";
-import { getCats } from "@/lib/api";
-import type { Breed, Paginated } from "@/lib/api";
+import { getCatFact, getCats } from "@/lib/api";
+import type { Breed, CatFact, Paginated } from "@/lib/api";
 import { getQueryClient } from "@/lib/query/get-query-client";
 
 vi.mock("@/lib/api", () => ({
   getCats: vi.fn(),
+  getCatFact: vi.fn(),
 }));
 
 const mockNotFound = vi.fn(() => null);
@@ -23,6 +24,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const mockGetCats = vi.mocked(getCats);
+const mockGetCatFact = vi.mocked(getCatFact);
 
 function makePage(
   currentPage: number,
@@ -56,6 +58,11 @@ const aegean: Breed = {
   pattern: "Multi",
 };
 
+const sampleFact: CatFact = {
+  fact: "Cats sleep 70% of their lives.",
+  length: 31,
+};
+
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -70,6 +77,8 @@ function renderWithProviders(ui: React.ReactElement) {
 
 beforeEach(() => {
   mockGetCats.mockReset();
+  mockGetCatFact.mockReset();
+  mockGetCatFact.mockResolvedValue(sampleFact);
   mockNotFound.mockClear();
   getQueryClient().clear();
 });
@@ -132,4 +141,60 @@ test("CatDetail calls notFound when slug is missing after all pages", async () =
   await waitFor(() => {
     expect(mockNotFound).toHaveBeenCalled();
   });
+});
+
+test("CatDetail shows breed info while random fact loads, then the fact", async () => {
+  mockGetCats.mockResolvedValue(makePage(1, 1, [abyssinian]));
+
+  let resolveFact!: (value: CatFact) => void;
+  mockGetCatFact.mockImplementation(
+    () =>
+      new Promise<CatFact>((resolve) => {
+        resolveFact = resolve;
+      }),
+  );
+
+  renderWithProviders(<CatDetail slug="abyssinian" />);
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Abyssinian" }),
+    ).toBeDefined();
+  });
+
+  expect(screen.getByRole("heading", { level: 2, name: "Random fact" })).toBeDefined();
+  expect(screen.getByText("Loading...")).toBeDefined();
+  expect(screen.getByText("Ethiopia")).toBeDefined();
+
+  resolveFact(sampleFact);
+
+  await waitFor(() => {
+    expect(screen.getByText(sampleFact.fact)).toBeDefined();
+  });
+
+  expect(screen.queryByText("Loading...")).toBeNull();
+});
+
+test("CatDetail fetches a new fact for each breed slug", async () => {
+  mockGetCats.mockResolvedValue(makePage(1, 1, [abyssinian, aegean]));
+  mockGetCatFact
+    .mockResolvedValueOnce({ fact: "Fact for Abyssinian", length: 18 })
+    .mockResolvedValueOnce({ fact: "Fact for Aegean", length: 15 });
+
+  renderWithProviders(<CatDetail slug="abyssinian" />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Fact for Abyssinian")).toBeDefined();
+  });
+
+  expect(mockGetCatFact).toHaveBeenCalledTimes(1);
+
+  cleanup();
+  renderWithProviders(<CatDetail slug="aegean" />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Fact for Aegean")).toBeDefined();
+  });
+
+  expect(mockGetCatFact).toHaveBeenCalledTimes(2);
 });

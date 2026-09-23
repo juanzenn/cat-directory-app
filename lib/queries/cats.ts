@@ -1,4 +1,4 @@
-import { getCats } from "@/lib/api";
+import { getCatFact, getCats } from "@/lib/api";
 import type { Breed, Paginated } from "@/lib/api";
 
 export const CATS_PAGE_SIZE = 10;
@@ -84,3 +84,13 @@ export const catsInfiniteQueryOptions = {
       : undefined,
   networkMode: "offlineFirst" as const,
 };
+
+export function catFactQueryOptions(slug: string) {
+  return {
+    queryKey: ["cat-fact", slug] as const,
+    queryFn: getCatFact,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always" as const,
+  };
+}

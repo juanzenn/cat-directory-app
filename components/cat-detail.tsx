@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import RandomFact from "@/components/random-fact";
 import { findBreedBySlug } from "@/lib/queries/cats";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
 
@@ -66,6 +67,7 @@ export default function CatDetail({ slug }: { slug: string }) {
           <dt className="font-medium text-neutral-600">Pattern</dt>
           <dd>{displayValue(breed.pattern)}</dd>
         </dl>
+        <RandomFact slug={slug} />
       </div>
     );
   }
