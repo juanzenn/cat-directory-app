@@ -68,13 +68,13 @@ test("parseCatsSearchParam trims and caps length", () => {
 });
 test("catsPageFromScrollTop accounts for grid columns", () => {
   const rowHeight = 220;
-  expect(catsPageFromScrollTop(10 * rowHeight, 40, rowHeight, 1)).toBe(2);
+  expect(catsPageFromScrollTop(12 * rowHeight, 40, rowHeight, 1)).toBe(2);
   expect(catsPageFromScrollTop(rowHeight, 40, rowHeight, 4)).toBe(1);
-  expect(catsPageFromScrollTop(3 * rowHeight, 40, rowHeight, 4)).toBe(2);
+  expect(catsPageFromScrollTop(3 * rowHeight, 48, rowHeight, 4)).toBe(2);
 });
 
 test("catsScrollTopFromIndex maps item index through columns", () => {
   expect(catsScrollTopFromIndex(0, 220, 4)).toBe(0);
   expect(catsScrollTopFromIndex(4, 220, 4)).toBe(220);
-  expect(catsScrollTopFromIndex(10, 220, 4)).toBe(440);
+  expect(catsScrollTopFromIndex(12, 220, 4)).toBe(660);
 });

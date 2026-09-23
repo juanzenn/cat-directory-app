@@ -83,7 +83,7 @@ const validPage = {
       pattern: "Ticked",
     },
   ],
-  per_page: 10,
+  per_page: 12,
   total: 1,
   last_page: 1,
   next_page_url: null,

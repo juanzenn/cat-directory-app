@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getCatFact, getCats } from "@/lib/api";
 import type { Breed, Paginated } from "@/lib/api";
 
-export const CATS_PAGE_SIZE = 10;
+export const CATS_PAGE_SIZE = 12;
 export const CATS_MAX_PAGE_PARAM = 1000;
 export const CATS_MAX_SEARCH_LENGTH = 100;
 
