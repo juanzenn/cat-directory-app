@@ -43,10 +43,14 @@ export default async function BreedDetailPage({
 
   const queryClient = getQueryClient();
 
-  await queryClient.infiniteQuery({
-    ...catsInfiniteQueryOptions,
-    pages: 1,
-  });
+  try {
+    await queryClient.infiniteQuery({
+      ...catsInfiniteQueryOptions,
+      pages: 1,
+    });
+  } catch {
+    // Soft-fail: dehydrate error/empty cache so the client can show Retry UI.
+  }
 
   return (
     <main

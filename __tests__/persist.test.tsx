@@ -107,6 +107,15 @@ test("parsePersistedCatsInfinite rejects corrupt pages", () => {
   ).toBeUndefined();
 });
 
+test("deserializePersistedClient returns empty client for invalid JSON", () => {
+  const restored = deserializePersistedClient("{not-json");
+  expect(restored).toEqual({
+    timestamp: 0,
+    buster: "",
+    clientState: { mutations: [], queries: [] },
+  });
+});
+
 test("deserializePersistedClient drops invalid cats queries", () => {
   const cached = JSON.stringify({
     timestamp: Date.now(),

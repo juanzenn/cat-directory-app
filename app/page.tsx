@@ -19,10 +19,14 @@ export default async function Home({
   const page = parseCatsPageParam(params.page);
   const query = parseCatsSearchParam(params.q);
 
-  await queryClient.infiniteQuery({
-    ...catsInfiniteQueryOptions,
-    pages: page,
-  });
+  try {
+    await queryClient.infiniteQuery({
+      ...catsInfiniteQueryOptions,
+      pages: page,
+    });
+  } catch {
+    // Soft-fail: dehydrate error/empty cache so the client can show Retry UI.
+  }
 
   return (
     <main

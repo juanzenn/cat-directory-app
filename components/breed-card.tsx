@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Breed } from "@/lib/api";
 import { breedToSlug } from "@/lib/queries/cats";
 import { buildCatsSearchString } from "@/lib/url/sync-url-params";
-import { cn } from "@/lib/utils";
+import { cn, displayValue } from "@/lib/utils";
 import {
   Card,
   CardDescription,
@@ -39,9 +39,11 @@ export function BreedCard({
       >
         <CardHeader className="gap-1 px-4 py-4">
           <CardTitle className="font-heading text-base font-semibold tracking-tight">
-            {cat.breed}
+            {displayValue(cat.breed)}
           </CardTitle>
-          <CardDescription className="text-sm">{cat.country}</CardDescription>
+          <CardDescription className="text-sm">
+            {displayValue(cat.country)}
+          </CardDescription>
         </CardHeader>
       </Link>
     </Card>

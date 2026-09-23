@@ -8,9 +8,12 @@ import {
   BreedCardSkeleton,
   BREED_CARD_SKELETON_COUNT,
 } from "@/components/breed-card";
+import { EmptyState } from "@/components/empty-state";
+import { QueryError } from "@/components/query-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getErrorMessage } from "@/lib/api/errors";
 import { useCatSearch } from "@/lib/hooks/use-cat-search";
 import { useCatsRefresh } from "@/lib/hooks/use-cats-refresh";
 import { useGridColumns } from "@/lib/hooks/use-grid-columns";
@@ -26,6 +29,7 @@ import {
   filterCats,
 } from "@/lib/queries/cats";
 import { useCatsInfiniteQuery } from "@/lib/queries/use-cats-infinite-query";
+import { cn } from "@/lib/utils";
 
 /** Name + country card + gap — tall enough that infinite fetch still triggers. */
 const CARD_ROW_HEIGHT = 112;
@@ -75,7 +79,10 @@ function DirectoryHeader({
           aria-label={isRefreshing ? "Refreshing…" : "Refresh"}
           className="shrink-0 rounded-full"
         >
-          <RefreshCw className="size-4" aria-hidden />
+          <RefreshCw
+            className={cn("size-4", isRefreshing && "animate-spin")}
+            aria-hidden
+          />
         </Button>
       </div>
     </header>
@@ -172,6 +179,7 @@ export default function CatList({
     hasNextPage,
     isFetchingNextPage,
     isFetchNextPageError,
+    refetch,
     status,
   } = useCatsInfiniteQuery();
 
@@ -198,10 +206,25 @@ export default function CatList({
 
   const cats = data?.pages.flatMap((page) => page.data) ?? [];
   const filteredCats = filterCats(cats, debouncedQuery);
+  const hasActiveQuery = debouncedQuery.trim().length > 0;
+  const isFilterSearching =
+    status === "success" &&
+    hasActiveQuery &&
+    filteredCats.length === 0 &&
+    (Boolean(hasNextPage) || isFetchingNextPage);
   const isEmptyFilter =
     status === "success" &&
+    hasActiveQuery &&
     filteredCats.length === 0 &&
-    debouncedQuery.trim().length > 0;
+    !hasNextPage &&
+    !isFetchingNextPage &&
+    !isFetchNextPageError;
+  const isEmptyCatalog =
+    status === "success" &&
+    !hasActiveQuery &&
+    cats.length === 0 &&
+    !hasNextPage &&
+    !isFetchingNextPage;
 
   const { pullDistance, isPulling } = usePullToRefresh({
     scrollRef: parentRef,
@@ -213,12 +236,15 @@ export default function CatList({
   const paddingEnd = useScrollPaddingEnd(parentRef, status);
 
   const showLoaderSlot =
-    !isEmptyFilter && (Boolean(hasNextPage) || isFetchNextPageError);
+    !isEmptyFilter &&
+    !isEmptyCatalog &&
+    (Boolean(hasNextPage) || isFetchNextPageError || isFilterSearching);
 
   const rowVirtualizer = useVirtualizer({
-    count: isEmptyFilter
-      ? 0
-      : filteredCats.length + (showLoaderSlot ? 1 : 0),
+    count:
+      isEmptyFilter || isEmptyCatalog || isFilterSearching
+        ? 0
+        : filteredCats.length + (showLoaderSlot ? 1 : 0),
     getScrollElement: () => parentRef.current,
     estimateSize: () => CARD_ROW_HEIGHT,
     overscan: 3,
@@ -261,6 +287,30 @@ export default function CatList({
     fetchNextPage,
   });
 
+  // Keep paging while a filter has no matches among loaded breeds.
+  useEffect(() => {
+    if (
+      !hasActiveQuery ||
+      filteredCats.length > 0 ||
+      status !== "success" ||
+      !hasNextPage ||
+      isFetchingNextPage ||
+      isFetchNextPageError
+    ) {
+      return;
+    }
+
+    void fetchNextPage();
+  }, [
+    hasActiveQuery,
+    filteredCats.length,
+    status,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    fetchNextPage,
+  ]);
+
   useSyncPageFromScroll({
     parentRef,
     lastSyncedPageRef,
@@ -279,15 +329,21 @@ export default function CatList({
 
   const linkPage = lastSyncedPageRef.current ?? initialPage;
   const linkQuery = debouncedQuery;
-  const resultsLabel = debouncedQuery.trim()
-    ? filteredCats.length === 0
+  const resultsLabel = hasActiveQuery
+    ? isEmptyFilter
       ? `No breeds match “${debouncedQuery.trim()}”`
-      : `Showing ${filteredCats.length} of ${cats.length} breeds`
-    : `${filteredCats.length} breeds`;
+      : isFilterSearching
+        ? `Searching for “${debouncedQuery.trim()}”`
+        : `Showing ${filteredCats.length} of ${cats.length} breeds`
+    : isEmptyCatalog
+      ? "No breeds available"
+      : `${filteredCats.length} breeds`;
 
   const showEndOfList =
     status === "success" &&
     !isEmptyFilter &&
+    !isEmptyCatalog &&
+    !isFilterSearching &&
     filteredCats.length > 0 &&
     !hasNextPage &&
     !isFetchNextPageError;
@@ -301,6 +357,14 @@ export default function CatList({
       refreshDisabled={status === "pending" && !data}
     />
   );
+
+  const retryFetchNext = () => {
+    void fetchNextPage();
+  };
+
+  const retryRefetch = () => {
+    void refetch();
+  };
 
   if (status === "pending" && !isRefreshing && !data) {
     return (
@@ -320,9 +384,10 @@ export default function CatList({
     return (
       <div className="relative flex h-full min-h-0 flex-1 flex-col gap-8 overflow-hidden">
         {header}
-        <p role="alert" className="text-center text-sm text-destructive">
-          Error: {error.message}
-        </p>
+        <QueryError
+          message={getErrorMessage(error)}
+          onRetry={retryRefetch}
+        />
       </div>
     );
   }
@@ -348,17 +413,25 @@ export default function CatList({
           ref={parentRef}
           role="region"
           aria-label="Breed list"
-          aria-busy={isRefreshing}
+          aria-busy={isRefreshing || isFilterSearching}
           className="h-full min-h-0 overflow-auto"
           style={{ paddingRight: SCROLLBAR_GUTTER_PX }}
         >
-          {isEmptyFilter ? (
-            <p
-              role="status"
-              className="py-8 text-center text-sm text-muted-foreground"
-            >
+          {isEmptyCatalog ? (
+            <EmptyState>No breeds available.</EmptyState>
+          ) : isEmptyFilter ? (
+            <EmptyState>
               No breeds match “{debouncedQuery.trim()}”.
-            </p>
+            </EmptyState>
+          ) : isFilterSearching ? (
+            isFetchNextPageError ? (
+              <QueryError
+                message="Error searching more breeds."
+                onRetry={retryFetchNext}
+              />
+            ) : (
+              <PendingSkeletonGrid />
+            )
           ) : (
             <>
               <div
@@ -414,20 +487,11 @@ export default function CatList({
                             }}
                           >
                             {isFetchNextPageError ? (
-                              <p
-                                role="alert"
-                                className="flex h-full items-center justify-center gap-2 text-sm"
-                              >
-                                <span>Error loading more cats.</span>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => void fetchNextPage()}
-                                >
-                                  Retry
-                                </Button>
-                              </p>
+                              <QueryError
+                                className="flex h-full flex-row items-center justify-center gap-2"
+                                message="Error loading more cats."
+                                onRetry={retryFetchNext}
+                              />
                             ) : (
                               <FetchMoreSkeletonRow columns={columns} />
                             )}

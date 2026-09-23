@@ -175,13 +175,31 @@ test("CatList shows pending status", () => {
   expect(screen.getByText("Loading breeds…")).toBeDefined();
 });
 
-test("CatList shows error status", async () => {
+test("CatList shows error status with Retry", async () => {
   mockGetCats.mockRejectedValue(new Error("Network down"));
 
   renderWithProviders(<CatList />);
 
   await waitFor(() => {
-    expect(screen.getByText("Error: Network down")).toBeDefined();
+    expect(screen.getByText("Network down")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
+  });
+
+  mockGetCats.mockResolvedValue(page1);
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  await waitFor(() => {
+    expect(screen.getByText("Abyssinian")).toBeDefined();
+  });
+});
+
+test("CatList shows empty catalog when API returns no breeds", async () => {
+  mockGetCats.mockResolvedValue(makePage(1, 1, []));
+
+  renderWithProviders(<CatList />);
+
+  await waitFor(() => {
+    expect(screen.getByText("No breeds available.")).toBeDefined();
   });
 });
 
@@ -388,5 +406,54 @@ test("CatList refresh keeps cached cats when refetch fails", async () => {
 
   expect(screen.getByText("Abyssinian")).toBeDefined();
   expect(screen.getByText("Aegean")).toBeDefined();
-  expect(screen.queryByText("Error: offline")).toBeNull();
+  expect(screen.queryByText("offline")).toBeNull();
+});
+
+test("CatList keeps fetching pages while filter has no local matches", async () => {
+  mockGetCats.mockImplementation(async (params) => {
+    const page = params?.page ?? 1;
+    if (page === 1) {
+      return makePage(1, 2, [
+        {
+          breed: "Abyssinian",
+          country: "Ethiopia",
+          origin: "Natural/Standard",
+          coat: "Short",
+          pattern: "Ticked",
+        },
+      ]);
+    }
+    return makePage(2, 2, [
+      {
+        breed: "Aegean",
+        country: "Greece",
+        origin: "Natural/Standard",
+        coat: "Semi-long",
+        pattern: "Multi",
+      },
+    ]);
+  });
+
+  renderWithProviders(<CatList initialQuery="greece" />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Aegean")).toBeDefined();
+  });
+
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 1, limit: 10 });
+  expect(mockGetCats).toHaveBeenCalledWith({ page: 2, limit: 10 });
+  expect(screen.queryByText("Abyssinian")).toBeNull();
+  expect(screen.queryByText(/No breeds match/)).toBeNull();
+});
+
+test("getQueryClient uses retry 3 with incremental delay", async () => {
+  const { QUERY_RETRY_COUNT, queryRetryDelay } = await import(
+    "@/lib/query/get-query-client"
+  );
+
+  expect(QUERY_RETRY_COUNT).toBe(3);
+  expect(queryRetryDelay(0)).toBe(1000);
+  expect(queryRetryDelay(1)).toBe(2000);
+  expect(queryRetryDelay(2)).toBe(4000);
+  expect(queryRetryDelay(10)).toBe(30_000);
 });
